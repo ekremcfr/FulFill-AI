@@ -1,4 +1,8 @@
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
+
+import { askCopilot } from "@/lib/copilot.functions";
+
 
 /* ============================================================
  * FulfillAI Copilot — floating conversational assistant
@@ -18,62 +22,8 @@ interface Msg {
   applied?: boolean;
 }
 
-interface Script {
-  match: RegExp;
-  reply: string;
-  suggestion?: Suggestion;
-}
 
-const SCRIPTS: Script[] = [
-  {
-    match: /(aisle\s*c|zone\s*c).*(congest|slow|traffic|jam)|why.*c/i,
-    reply:
-      "Because 42% of today's orders require products stored in C. Pickers are cross-tracking through the same choke point every wave.",
-    suggestion: { action: "Move SKU-245 closer to Zone A.", improvement: "+14%" },
-  },
-  {
-    match: /bottleneck|slow.*down|slowest/i,
-    reply:
-      "The primary bottleneck is the C↔D crossover near packing. Three high-velocity SKUs live on the far side of a low-velocity row, forcing 38% of pickers through it.",
-    suggestion: { action: "Re-slot SKU-118 and SKU-402 into Zone A.", improvement: "+19%" },
-  },
-  {
-    match: /(shortest|optim|best).*(route|path)|route.*optim/i,
-    reply:
-      "Running the optimizer collapses the current 17.8 km tour into an 11.9 km s-curve through zones A→B→C, ending at Packing-1. That's 33 minutes saved per wave.",
-    suggestion: { action: "Deploy optimized route to Wave 3.", improvement: "−36% pick time" },
-  },
-  {
-    match: /pack(ing)?.*(load|busy|queue)|packing.*station/i,
-    reply:
-      "Packing-1 is at 91% utilization, Packing-2 at 47%. Wave sequencing is skewed toward SKUs near Packing-1.",
-    suggestion: { action: "Rebalance Wave 4 to Packing-2.", improvement: "+22% throughput" },
-  },
-  {
-    match: /(cold|dead|slow).*sku|obsolete|stale.*stock/i,
-    reply:
-      "218 SKUs haven't moved in 30+ days and occupy 14% of A-zone real estate — the most valuable slots in the DC.",
-    suggestion: { action: "Relocate 41 cold SKUs to overflow rack G.", improvement: "+9% pick density" },
-  },
-  {
-    match: /forecast|demand|next.*(week|day|wave)/i,
-    reply:
-      "Next 7 days: demand is trending +12% vs. last week, concentrated in Zone A (electronics). Recommend pre-staging Wave 5 & 6 tonight.",
-    suggestion: { action: "Pre-stage 340 units to forward-pick.", improvement: "+11% wave velocity" },
-  },
-  {
-    match: /labor|staff|picker|worker/i,
-    reply:
-      "You are over-staffed by 6 pickers in Zone B and under-staffed by 4 in Zone C between 10:00–14:00. Reassigning saves $1,240 per shift.",
-    suggestion: { action: "Rebalance labor plan for tomorrow.", improvement: "−24% labor cost" },
-  },
-];
 
-const FALLBACK: Script = {
-  match: /.*/,
-  reply:
-    "I can help with congestion, slotting, routing, packing balance, dead stock, forecasting and labor allocation. Try asking why an aisle is slow, or what to re-slot.",
-};
 
 const SUGGESTED_PROMPTS = [
   "Why is Aisle C congested?",
@@ -95,6 +45,7 @@ export function Copilot() {
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const ask = useServerFn(askCopilot);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 99999, behavior: "smooth" });
@@ -104,29 +55,49 @@ export function Copilot() {
     if (open) setTimeout(() => inputRef.current?.focus(), 250);
   }, [open]);
 
-  const send = (raw: string) => {
+  const send = async (raw: string) => {
     const text = raw.trim();
     if (!text || typing) return;
     const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", text };
-    setMsgs((m) => [...m, userMsg]);
+    const history: Msg[] = [...msgs, userMsg];
+    setMsgs(history);
     setInput("");
     setTyping(true);
 
-    const script = SCRIPTS.find((s) => s.match.test(text)) ?? FALLBACK;
-    const delay = 700 + Math.min(1400, script.reply.length * 12);
-    setTimeout(() => {
+    try {
+      const result = await ask({
+        data: {
+          messages: history
+            .filter((m) => m.id !== "greet")
+            .map((m) => ({ role: m.role, text: m.text })),
+        },
+      });
+      setTyping(false);
+      if (result.ok) {
+        setMsgs((m) => [
+          ...m,
+          { id: `a-${Date.now()}`, role: "ai", text: result.text },
+        ]);
+      } else {
+        setMsgs((m) => [
+          ...m,
+          { id: `a-${Date.now()}`, role: "ai", text: result.error },
+        ]);
+      }
+    } catch (err) {
+      console.error("[copilot] send failed", err);
       setTyping(false);
       setMsgs((m) => [
         ...m,
         {
           id: `a-${Date.now()}`,
           role: "ai",
-          text: script.reply,
-          suggestion: script.suggestion,
+          text: "Copilot is offline right now. Please try again shortly.",
         },
       ]);
-    }, delay);
+    }
   };
+
 
   const apply = (id: string) => {
     setMsgs((m) => m.map((x) => (x.id === id ? { ...x, applied: true } : x)));
