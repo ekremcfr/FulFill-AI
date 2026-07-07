@@ -615,8 +615,8 @@ export function IsometricWarehouse({
             fill="#CFD7E4" stroke="#B8C1D1" strokeWidth="0.6"
           />
 
-          {/* OPTIMIZED ROUTE */}
-          {optimized && (
+          {/* OPTIMIZED ROUTE (default, hidden during cinematic) */}
+          {optimized && !isOptActive && (
             <g>
               <path d={routeScreen} fill="none" stroke="#183B6B" strokeOpacity="0.18" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
               <path d={routeScreen} fill="none" stroke="#183B6B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="10 8" className="animate-route-dash" />
@@ -644,39 +644,60 @@ export function IsometricWarehouse({
             );
           })}
 
-          {/* RACKS */}
-          {SORTED_RACKS.map((r) => (
-            <Rack
-              key={r.id}
-              rack={r}
-              heatmap={heatmap}
-              showLabel={labels}
-              selected={selected?.id === r.id}
-              hovered={hovered?.id === r.id}
-              onEnter={(e) => {
-                setHovered(r);
-                if (containerRef.current) {
-                  const rect = containerRef.current.getBoundingClientRect();
-                  setTip({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                }
+          {/* DIM OVERLAY (over floor/labels, under racks & cinematic) */}
+          {isOptActive && (
+            <polygon
+              points={floor}
+              fill="#050914"
+              style={{
+                opacity: phase === "dim" ? 0.35 : 0.55,
+                transition: "opacity 500ms ease",
               }}
-              onLeave={() => { setHovered(null); setTip(null); }}
-              onClick={() => selectRack(selected?.id === r.id ? null : r)}
             />
-          ))}
+          )}
 
-          {/* WORKERS */}
-          {WORKER_PATHS.map((w) => (
+          {/* RACKS */}
+          {SORTED_RACKS.map((r) => {
+            let optState: RackProps["optState"] = "off";
+            if (isOptActive) {
+              if (visited.has(r.id)) optState = "visited";
+              else if (phase === "scan") {
+                optState = scanned.has(r.id) ? "scanned" : "pending";
+              } else {
+                optState = "pending";
+              }
+            }
+            return (
+              <Rack
+                key={r.id}
+                rack={r}
+                heatmap={heatmap}
+                showLabel={labels}
+                selected={selected?.id === r.id}
+                hovered={hovered?.id === r.id}
+                optState={optState}
+                onEnter={(e) => {
+                  setHovered(r);
+                  if (containerRef.current) {
+                    const rect = containerRef.current.getBoundingClientRect();
+                    setTip({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }
+                }}
+                onLeave={() => { setHovered(null); setTip(null); }}
+                onClick={() => selectRack(selected?.id === r.id ? null : r)}
+              />
+            );
+          })}
+
+          {/* AMBIENT WORKERS (hidden during cinematic) */}
+          {!isOptActive && WORKER_PATHS.map((w) => (
             <g key={w.id}>
               <ellipse rx="8" ry="3" fill="url(#worker-shadow)">
                 <animateMotion dur={`${w.dur}s`} repeatCount="indefinite" path={w.path} rotate="0" />
               </ellipse>
               <g>
-                {/* body */}
                 <rect x="-3" y="-14" width="6" height="10" rx="1.5" fill={w.color} />
-                {/* head */}
                 <circle cy="-17" r="2.8" fill="#F5D7A8" stroke="#8A6136" strokeWidth="0.4" />
-                {/* helmet */}
                 <path d="M -3 -18 L 3 -18 L 2.5 -20 A 2.5 2.5 0 0 0 -2.5 -20 Z" fill={w.color} />
                 <animateMotion dur={`${w.dur}s`} repeatCount="indefinite" path={w.path} rotate="0" />
               </g>
@@ -684,12 +705,140 @@ export function IsometricWarehouse({
           ))}
 
           {/* FORKLIFTS */}
-          {FORKLIFT_PATHS.map((f) => (
+          {!isOptActive && FORKLIFT_PATHS.map((f) => (
             <g key={f.id}>
               <Forklift />
               <animateMotion dur={`${f.dur}s`} repeatCount="indefinite" path={f.path} rotate="0" />
             </g>
           ))}
+
+          {/* ===== OPTIMIZATION CINEMATIC OVERLAYS ===== */}
+          {isOptActive && (
+            <g>
+              {/* Scanning sweep bar (during scan phase) */}
+              {phase === "scan" && (() => {
+                const scanX = scanT * FLOOR_W;
+                const p1 = iso(scanX, 0, 0);
+                const p2 = iso(scanX, FLOOR_H, 0);
+                const p3 = iso(scanX, FLOOR_H, 90);
+                const p4 = iso(scanX, 0, 90);
+                return (
+                  <g filter="url(#opt-strong-glow)">
+                    <polygon
+                      points={`${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${p3[0]},${p3[1]} ${p4[0]},${p4[1]}`}
+                      fill="#3EE0E0"
+                      opacity="0.22"
+                    />
+                    <line
+                      x1={p1[0]} y1={p1[1]} x2={p4[0]} y2={p4[1]}
+                      stroke="#5EF7FF" strokeWidth="2.5" opacity="0.95"
+                    />
+                    <line
+                      x1={p2[0]} y1={p2[1]} x2={p3[0]} y2={p3[1]}
+                      stroke="#5EF7FF" strokeWidth="2.5" opacity="0.95"
+                    />
+                    <line
+                      x1={p1[0]} y1={p1[1]} x2={p2[0]} y2={p2[1]}
+                      stroke="#5EF7FF" strokeWidth="2" opacity="0.9"
+                    />
+                  </g>
+                );
+              })()}
+
+              {/* Glowing green optimized route */}
+              {(phase === "route" || phase === "walk" || phase === "done") && (() => {
+                // Approximate total iso-path length for stroke-dashoffset
+                let isoLen = 0;
+                for (let i = 0; i < OPT_ROUTE.length - 1; i++) {
+                  const a = iso(OPT_ROUTE[i][0], OPT_ROUTE[i][1]);
+                  const b = iso(OPT_ROUTE[i + 1][0], OPT_ROUTE[i + 1][1]);
+                  isoLen += Math.hypot(b[0] - a[0], b[1] - a[1]);
+                }
+                const drawT = phase === "route" ? routeDraw : 1;
+                const offset = isoLen * (1 - drawT);
+                return (
+                  <g>
+                    <path
+                      d={optRouteScreen}
+                      fill="none"
+                      stroke="#22C55E"
+                      strokeOpacity="0.25"
+                      strokeWidth="16"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      filter="url(#opt-strong-glow)"
+                      strokeDasharray={isoLen}
+                      strokeDashoffset={offset}
+                    />
+                    <path
+                      d={optRouteScreen}
+                      fill="none"
+                      stroke="url(#opt-route-grad)"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      filter="url(#opt-glow)"
+                      strokeDasharray={isoLen}
+                      strokeDashoffset={offset}
+                    />
+                    <path
+                      d={optRouteScreen}
+                      fill="none"
+                      stroke="#ECFDF5"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray={`8 8`}
+                      className="animate-route-dash"
+                      opacity={0.9 * drawT}
+                    />
+                  </g>
+                );
+              })()}
+
+              {/* Entrance marker pulse */}
+              {(phase === "route" || phase === "walk") && (() => {
+                const [ex, ey] = iso(ENTRANCE[0], ENTRANCE[1]);
+                return (
+                  <g transform={`translate(${ex} ${ey})`}>
+                    <circle r="10" fill="#22C55E" opacity="0.25" className="animate-pulse-ring" />
+                    <circle r="5" fill="#22C55E" />
+                    <circle r="5" fill="none" stroke="#ECFDF5" strokeWidth="1.4" />
+                  </g>
+                );
+              })()}
+
+              {/* Packing destination flag */}
+              {(phase === "route" || phase === "walk" || phase === "done") && (() => {
+                const [px, py] = iso(PACKING[0], PACKING[1]);
+                return (
+                  <g transform={`translate(${px} ${py})`}>
+                    <circle r="9" fill="#22C55E" opacity="0.3" filter="url(#opt-glow)" />
+                    <circle r="4.5" fill="#22C55E" />
+                    <path d="M 0 -18 L 0 -4" stroke="#0F5D2D" strokeWidth="1.4" />
+                    <polygon points="0,-18 10,-14 0,-10" fill="#22C55E" />
+                  </g>
+                );
+              })()}
+
+              {/* Worker following route */}
+              {(phase === "walk" || phase === "done") && (
+                <g transform={`translate(${workerScreen[0]} ${workerScreen[1]})`}>
+                  <ellipse rx="10" ry="3.5" fill="url(#worker-shadow)" />
+                  <circle r="14" fill="#22C55E" opacity="0.18" filter="url(#opt-strong-glow)" />
+                  <g>
+                    <rect x="-3.5" y="-15" width="7" height="11" rx="1.6" fill="#22C55E" />
+                    <circle cy="-18" r="3.1" fill="#F5D7A8" stroke="#8A6136" strokeWidth="0.4" />
+                    <path d="M -3.2 -19.5 L 3.2 -19.5 L 2.6 -21.5 A 2.8 2.8 0 0 0 -2.6 -21.5 Z" fill="#0F5D2D" />
+                    {/* AI reticle */}
+                    <circle r="18" fill="none" stroke="#22C55E" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.7">
+                      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite" />
+                    </circle>
+                  </g>
+                </g>
+              )}
+            </g>
+          )}
         </g>
       </svg>
 
