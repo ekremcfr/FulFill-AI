@@ -79,24 +79,38 @@ export function Copilot() {
           { id: `a-${Date.now()}`, role: "ai", text: result.text },
         ]);
       } else {
+        console.error("[copilot] gemini request failed", result);
+        const details = [
+          `Status: ${result.status} ${result.statusText || ""}`.trim(),
+          result.providerMessage ? `Message: ${result.providerMessage}` : "",
+          result.body ? `Response body:\n${result.body}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
         setMsgs((m) => [
           ...m,
-          { id: `a-${Date.now()}`, role: "ai", text: result.error },
+          {
+            id: `a-${Date.now()}`,
+            role: "ai",
+            text: `${result.error}\n\n${details}`.trim(),
+          },
         ]);
       }
     } catch (err) {
       console.error("[copilot] send failed", err);
       setTyping(false);
+      const message = err instanceof Error ? err.message : String(err);
       setMsgs((m) => [
         ...m,
         {
           id: `a-${Date.now()}`,
           role: "ai",
-          text: "Copilot is offline right now. Please try again shortly.",
+          text: `Copilot request failed on the client.\n\n${message}`,
         },
       ]);
     }
   };
+
 
 
   const apply = (id: string) => {
