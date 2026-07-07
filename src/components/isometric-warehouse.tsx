@@ -218,11 +218,23 @@ const FORKLIFT_PATHS = [
 export interface IsometricWarehouseProps {
   className?: string;
   onSelectRack?: (r: RackData | null) => void;
+  /** Increment to trigger the optimization cinematic. */
+  optimizeNonce?: number;
+  onOptimizePhase?: (phase: OptPhase) => void;
+  onOptimizeMessage?: (msg: string, index: number) => void;
+  onOptimizeComplete?: () => void;
 }
 
 const VIEWBOX = { x: -820, y: -60, w: 1780, h: 1140 };
 
-export function IsometricWarehouse({ className, onSelectRack }: IsometricWarehouseProps) {
+export function IsometricWarehouse({
+  className,
+  onSelectRack,
+  optimizeNonce = 0,
+  onOptimizePhase,
+  onOptimizeMessage,
+  onOptimizeComplete,
+}: IsometricWarehouseProps) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
@@ -235,6 +247,14 @@ export function IsometricWarehouse({ className, onSelectRack }: IsometricWarehou
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   const dragRef = useRef<{ sx: number; sy: number; tx: number; ty: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Optimization cinematic state
+  const [phase, setPhase] = useState<OptPhase>("idle");
+  const [scanT, setScanT] = useState(0); // 0..1 across scan phase
+  const [routeDraw, setRouteDraw] = useState(0); // 0..1 draw progress
+  const [walkT, setWalkT] = useState(0); // 0..1 worker progress
+  const [visited, setVisited] = useState<Set<string>>(new Set());
+  const [scanned, setScanned] = useState<Set<string>>(new Set());
 
   const selectRack = (r: RackData | null) => {
     setSelected(r);
