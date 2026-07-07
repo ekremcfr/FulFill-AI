@@ -492,6 +492,25 @@ export function IsometricWarehouse({
             <rect width="20" height="20" fill="transparent" />
             <path d="M 20 0 L 0 0 0 20" stroke="#CDD5E0" strokeWidth="0.5" fill="none" />
           </pattern>
+          <linearGradient id="opt-route-grad" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#4ADE80" />
+            <stop offset="0.5" stopColor="#22C55E" />
+            <stop offset="1" stopColor="#10B981" />
+          </linearGradient>
+          <filter id="opt-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="opt-strong-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
 
         <g transform={cameraTransform}>
