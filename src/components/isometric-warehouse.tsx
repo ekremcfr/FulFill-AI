@@ -778,10 +778,23 @@ interface RackProps {
   onEnter: (e: ReactPointerEvent<SVGGElement>) => void;
   onLeave: () => void;
   onClick: () => void;
+  optState?: "off" | "pending" | "scanning" | "scanned" | "visited";
 }
 
-function Rack({ rack, heatmap, showLabel, hovered, selected, onEnter, onLeave, onClick }: RackProps) {
-  const c = heatmap ? heatColor(rack.freq) : ZONE_PALETTE[rack.zone];
+const OPT_PALETTE = {
+  pending:  { top: "#F4A300", right: "#B47A00", left: "#7A5300", stroke: "#4A2E00" },
+  scanning: { top: "#3EE0E0", right: "#1AA7B8", left: "#0B6D7A", stroke: "#053540" },
+  scanned:  { top: "#F4B93B", right: "#D18E14", left: "#8F5E00", stroke: "#5B3B00" },
+  visited:  { top: "#22C55E", right: "#15803D", left: "#0F5D2D", stroke: "#064221" },
+} as const;
+
+function Rack({ rack, heatmap, showLabel, hovered, selected, onEnter, onLeave, onClick, optState = "off" }: RackProps) {
+  const c =
+    optState !== "off" && optState in OPT_PALETTE
+      ? OPT_PALETTE[optState as keyof typeof OPT_PALETTE]
+      : heatmap
+        ? heatColor(rack.freq)
+        : ZONE_PALETTE[rack.zone];
   const { x, y, w, d, h } = rack;
   const top = poly([x, y, h], [x + w, y, h], [x + w, y + d, h], [x, y + d, h]);
   // LEFT face (x = x_min): visible on screen left
