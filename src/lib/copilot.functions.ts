@@ -77,23 +77,48 @@ export const askCopilot = createServerFn({ method: "POST" })
         }),
       });
 
+      const raw = await res.text();
+
       if (!res.ok) {
-        const body = await res.text();
-        console.error("[copilot] gemini error", res.status, body);
+        console.error("[copilot] gemini error", res.status, raw);
+        let providerMessage = "";
+        try {
+          const parsed = JSON.parse(raw) as {
+            error?: { message?: string; status?: string };
+          };
+          providerMessage = parsed.error?.message ?? "";
+        } catch {
+          /* not JSON */
+        }
         return {
           ok: false as const,
-          error:
-            res.status === 429
-              ? "Copilot is rate-limited. Please try again in a moment."
-              : "Copilot couldn't reach the AI service. Please try again.",
+          status: res.status,
+          statusText: res.statusText,
+          providerMessage,
+          body: raw.slice(0, 4000),
+          error: `Gemini API returned ${res.status} ${res.statusText}${
+            providerMessage ? ` — ${providerMessage}` : ""
+          }`,
         };
       }
 
-      const json = (await res.json()) as {
-        candidates?: Array<{
-          content?: { parts?: Array<{ text?: string }> };
-        }>;
+      let json: {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
       };
+      try {
+        json = JSON.parse(raw);
+      } catch (err) {
+        console.error("[copilot] gemini invalid JSON", err, raw);
+        return {
+          ok: false as const,
+          status: res.status,
+          statusText: res.statusText,
+          providerMessage: "",
+          body: raw.slice(0, 4000),
+          error: "Gemini returned a non-JSON response.",
+        };
+      }
+
       const text =
         json.candidates?.[0]?.content?.parts
           ?.map((p) => p.text ?? "")
@@ -103,16 +128,26 @@ export const askCopilot = createServerFn({ method: "POST" })
       if (!text) {
         return {
           ok: false as const,
-          error: "Copilot returned an empty response. Try rephrasing.",
+          status: res.status,
+          statusText: res.statusText,
+          providerMessage: "",
+          body: raw.slice(0, 4000),
+          error: "Gemini returned an empty response.",
         };
       }
 
       return { ok: true as const, text };
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       console.error("[copilot] gemini fetch failed", err);
       return {
         ok: false as const,
-        error: "Copilot is offline right now. Please try again shortly.",
+        status: 0,
+        statusText: "network_error",
+        providerMessage: "",
+        body: "",
+        error: `Network error contacting Gemini: ${message}`,
       };
     }
   });
+
