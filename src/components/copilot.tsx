@@ -254,7 +254,7 @@ function MessageBubble({ msg, onApply }: { msg: Msg; onApply: () => void }) {
         </svg>
       </div>
       <div className="min-w-0 flex-1 space-y-2">
-        <div className="rounded-2xl rounded-tl-md bg-white/[0.06] px-3.5 py-2 text-[13px] leading-relaxed text-white/90">
+        <div className="whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-white/[0.06] px-3.5 py-2 text-[13px] leading-relaxed text-white/90">
           {msg.text}
         </div>
         {msg.suggestion && (
