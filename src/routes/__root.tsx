@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { InvestorIntro } from "../components/investor-intro";
+import { Copilot } from "../components/copilot";
 
 function NotFoundComponent() {
   return (
@@ -113,6 +114,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <InvestorIntro />
       <Outlet />
+      <Copilot />
     </QueryClientProvider>
   );
 }
