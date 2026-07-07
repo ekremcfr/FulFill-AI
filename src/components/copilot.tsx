@@ -45,6 +45,7 @@ export function Copilot() {
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const ask = useServerFn(askCopilot);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 99999, behavior: "smooth" });
@@ -54,29 +55,49 @@ export function Copilot() {
     if (open) setTimeout(() => inputRef.current?.focus(), 250);
   }, [open]);
 
-  const send = (raw: string) => {
+  const send = async (raw: string) => {
     const text = raw.trim();
     if (!text || typing) return;
     const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", text };
-    setMsgs((m) => [...m, userMsg]);
+    const history: Msg[] = [...msgs, userMsg];
+    setMsgs(history);
     setInput("");
     setTyping(true);
 
-    const script = SCRIPTS.find((s) => s.match.test(text)) ?? FALLBACK;
-    const delay = 700 + Math.min(1400, script.reply.length * 12);
-    setTimeout(() => {
+    try {
+      const result = await ask({
+        data: {
+          messages: history
+            .filter((m) => m.id !== "greet")
+            .map((m) => ({ role: m.role, text: m.text })),
+        },
+      });
+      setTyping(false);
+      if (result.ok) {
+        setMsgs((m) => [
+          ...m,
+          { id: `a-${Date.now()}`, role: "ai", text: result.text },
+        ]);
+      } else {
+        setMsgs((m) => [
+          ...m,
+          { id: `a-${Date.now()}`, role: "ai", text: result.error },
+        ]);
+      }
+    } catch (err) {
+      console.error("[copilot] send failed", err);
       setTyping(false);
       setMsgs((m) => [
         ...m,
         {
           id: `a-${Date.now()}`,
           role: "ai",
-          text: script.reply,
-          suggestion: script.suggestion,
+          text: "Copilot is offline right now. Please try again shortly.",
         },
       ]);
-    }, delay);
+    }
   };
+
 
   const apply = (id: string) => {
     setMsgs((m) => m.map((x) => (x.id === id ? { ...x, applied: true } : x)));
