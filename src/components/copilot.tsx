@@ -1,4 +1,8 @@
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
+
+import { askCopilot } from "@/lib/copilot.functions";
+
 
 /* ============================================================
  * FulfillAI Copilot — floating conversational assistant
