@@ -306,6 +306,155 @@ export function IsometricWarehouse({
 
   const routeScreen = useMemo(() => "M " + ROUTE_POINTS.map(([x, y]) => pt(x, y)).join(" L "), []);
 
+  // Optimized cinematic route path (world → iso screen)
+  const optRouteScreen = useMemo(
+    () => "M " + OPT_ROUTE.map(([x, y]) => pt(x, y)).join(" L "),
+    [],
+  );
+
+  // Cumulative segment lengths for walk interpolation (world space)
+  const optSegments = useMemo(() => {
+    const segs: Array<{ from: [number, number]; to: [number, number]; len: number; cum: number }> = [];
+    let cum = 0;
+    for (let i = 0; i < OPT_ROUTE.length - 1; i++) {
+      const [x1, y1] = OPT_ROUTE[i];
+      const [x2, y2] = OPT_ROUTE[i + 1];
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      segs.push({ from: OPT_ROUTE[i], to: OPT_ROUTE[i + 1], len, cum });
+      cum += len;
+    }
+    return { segs, total: cum };
+  }, []);
+
+  const workerWorldPos = useMemo<[number, number]>(() => {
+    if (phase !== "walk" && phase !== "done") return ENTRANCE;
+    const t = phase === "done" ? 1 : walkT;
+    const target = t * optSegments.total;
+    for (const s of optSegments.segs) {
+      if (target <= s.cum + s.len || s === optSegments.segs[optSegments.segs.length - 1]) {
+        const localT = Math.max(0, Math.min(1, (target - s.cum) / (s.len || 1)));
+        return [
+          s.from[0] + (s.to[0] - s.from[0]) * localT,
+          s.from[1] + (s.to[1] - s.from[1]) * localT,
+        ];
+      }
+    }
+    return PACKING;
+  }, [phase, walkT, optSegments]);
+
+  // Cinematic sequence driver
+  useEffect(() => {
+    if (!optimizeNonce) return;
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const rafs: number[] = [];
+    const schedule = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
+    const animate = (durMs: number, onUpdate: (t: number) => void, onDone?: () => void) => {
+      const start = performance.now();
+      const step = (now: number) => {
+        if (cancelled) return;
+        const t = Math.min(1, (now - start) / durMs);
+        onUpdate(t);
+        if (t < 1) rafs.push(requestAnimationFrame(step));
+        else onDone?.();
+      };
+      rafs.push(requestAnimationFrame(step));
+    };
+
+    // Reset
+    setVisited(new Set());
+    setScanned(new Set());
+    setScanT(0);
+    setRouteDraw(0);
+    setWalkT(0);
+
+    // Phase: dim
+    setPhase("dim");
+    onOptimizePhase?.("dim");
+
+    // Rotating AI messages
+    OPT_MESSAGES.forEach((m, i) => {
+      schedule(m.at, () => {
+        if (cancelled) return;
+        onOptimizeMessage?.(m.text, i);
+      });
+    });
+
+    // Phase: scan (500 → 4500ms)
+    schedule(500, () => {
+      if (cancelled) return;
+      setPhase("scan");
+      onOptimizePhase?.("scan");
+      animate(4000, (t) => {
+        setScanT(t);
+        // Progressively mark racks as scanned when scan line passes their world-x
+        const scanX = t * FLOOR_W;
+        setScanned((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          for (const r of RACKS) {
+            if (!next.has(r.id) && r.x + r.w / 2 <= scanX) {
+              next.add(r.id);
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      });
+    });
+
+    // Phase: route draw (4500 → 6500ms)
+    schedule(4500, () => {
+      if (cancelled) return;
+      setPhase("route");
+      onOptimizePhase?.("route");
+      animate(2000, (t) => setRouteDraw(t));
+    });
+
+    // Phase: walk (6500 → 12500ms)
+    schedule(6500, () => {
+      if (cancelled) return;
+      setPhase("walk");
+      onOptimizePhase?.("walk");
+      animate(
+        6000,
+        (t) => {
+          setWalkT(t);
+          // Mark visited by segment index reached
+          const target = t * optSegments.total;
+          let reachedIdx = 0;
+          for (let i = 0; i < optSegments.segs.length; i++) {
+            if (target >= optSegments.segs[i].cum) reachedIdx = i;
+          }
+          // Waypoints 1..reachedIdx have been passed
+          const newVisited = new Set<string>();
+          for (let i = 0; i < Math.min(reachedIdx, OPT_VISIT_SEQUENCE.length); i++) {
+            newVisited.add(OPT_VISIT_SEQUENCE[i]);
+          }
+          setVisited(newVisited);
+        },
+        () => {
+          if (cancelled) return;
+          setVisited(new Set(OPT_VISIT_SEQUENCE));
+          setPhase("done");
+          onOptimizePhase?.("done");
+          onOptimizeComplete?.();
+        },
+      );
+    });
+
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+      rafs.forEach(cancelAnimationFrame);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [optimizeNonce]);
+
+  const isOptActive = phase !== "idle";
+  const workerScreen = iso(workerWorldPos[0], workerWorldPos[1]);
+
+
   return (
     <div
       ref={containerRef}
