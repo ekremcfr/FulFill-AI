@@ -136,6 +136,65 @@ const ROUTE_POINTS: Array<[number, number]> = [
 ];
 
 /* ============================================================
+ * Optimization cinematic — route through entrance → aisles → packing
+ * ==========================================================*/
+const ENTRANCE: [number, number] = [135, 65];
+const PACKING: [number, number] = [400, 830];
+
+const OPT_ROUTE: Array<[number, number]> = [
+  ENTRANCE,
+  [135, 305],
+  [700, 305],
+  [700, 175],
+  [430, 175],
+  [430, 305],
+  [610, 305],
+  [610, 435],
+  [430, 435],
+  [430, 565],
+  [700, 565],
+  [700, 695],
+  [430, 695],
+  [430, 830],
+  PACKING,
+];
+
+// Waypoint → nearest rack (used to mark visited shelves)
+function nearestRackId(x: number, y: number): string | null {
+  let best: RackData | null = null;
+  let bestD = Infinity;
+  for (const r of RACKS) {
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.d / 2;
+    const d = (cx - x) ** 2 + (cy - y) ** 2;
+    if (d < bestD) { bestD = d; best = r; }
+  }
+  return best?.id ?? null;
+}
+
+const OPT_VISIT_SEQUENCE: string[] = (() => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  // Skip entrance & packing endpoints
+  for (let i = 1; i < OPT_ROUTE.length - 1; i++) {
+    const id = nearestRackId(OPT_ROUTE[i][0], OPT_ROUTE[i][1]);
+    if (id && !seen.has(id)) { seen.add(id); out.push(id); }
+  }
+  return out;
+})();
+
+export type OptPhase = "idle" | "dim" | "scan" | "route" | "walk" | "done";
+
+export const OPT_MESSAGES: Array<{ at: number; text: string }> = [
+  { at: 0,    text: "Analyzing order clusters…" },
+  { at: 1200, text: "Reading warehouse layout…" },
+  { at: 2600, text: "Detecting bottlenecks…" },
+  { at: 4200, text: "Calculating shortest paths…" },
+  { at: 5800, text: "Building optimized route…" },
+  { at: 12500, text: "Optimization complete." },
+];
+
+/* ============================================================
  * Workers & forklifts (paths projected to iso screen space)
  * ==========================================================*/
 function isoPath(pts: Array<[number, number]>) {
