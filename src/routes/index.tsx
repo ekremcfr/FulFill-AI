@@ -8,6 +8,8 @@ import {
 } from "@/components/isometric-warehouse";
 import { setSelectedShelf } from "@/lib/copilot-context";
 import { LiveInsightsFeed } from "@/components/live-insights-feed";
+import { ShelfAiAnalysis } from "@/components/shelf-ai-analysis";
+
 
 
 export const Route = createFileRoute("/")({
