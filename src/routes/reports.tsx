@@ -28,7 +28,7 @@ function ReportsPage() {
             <p className="mt-1 text-sm text-muted-foreground">Quarterly decision studies · exportable to PDF and Looker.</p>
           </div>
           <div className="flex gap-2">
-            <button className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground/80 hover:bg-surface-muted">New study</button>
+            <button onClick={() => setModalOpen(true)} className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground/80 hover:bg-surface-muted">New study</button>
             <button className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Export CSV</button>
           </div>
         </div>
