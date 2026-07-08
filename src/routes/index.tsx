@@ -8,6 +8,8 @@ import {
 } from "@/components/isometric-warehouse";
 import { setSelectedShelf } from "@/lib/copilot-context";
 import { LiveInsightsFeed } from "@/components/live-insights-feed";
+import { ShelfAiAnalysis } from "@/components/shelf-ai-analysis";
+
 
 
 export const Route = createFileRoute("/")({
@@ -464,9 +466,11 @@ function SelectedRack({ rack, onClose }: { rack: RackData; onClose: () => void }
           </div>
         </div>
       </div>
+      <ShelfAiAnalysis rack={rack} />
     </div>
   );
 }
+
 
 function StatCell({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
