@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 const NAV = [
   { to: "/", label: "Warehouse", icon: WarehouseIcon },
-  { to: "/routes", label: "Route Optimization", icon: RouteIcon },
+  { to: "/routes", label: "Smart Picking", icon: RouteIcon },
   { to: "/slotting", label: "Smart Slotting", icon: SlotIcon },
   { to: "/insights", label: "AI Insights", icon: SparkIcon },
   { to: "/reports", label: "Reports", icon: ReportIcon },
