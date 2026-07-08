@@ -58,6 +58,70 @@ export function Copilot() {
     if (open) setTimeout(() => inputRef.current?.focus(), 250);
   }, [open]);
 
+  // Optimization run → auto-open and stream an executive summary
+  useEffect(() => {
+    return onOptimizationComplete(() => {
+      setOpen(true);
+      const userMsg: Msg = {
+        id: `u-opt-${Date.now()}`,
+        role: "user",
+        text: "Optimization run just completed — give me the executive summary.",
+      };
+      setMsgs((m) => [...m, userMsg]);
+      setTyping(true);
+      (async () => {
+        try {
+          const contextText = formatContextForPrompt(buildCopilotContext());
+          const prompt = `The warehouse optimizer just finished a full run on Reno DC-04.
+
+Results:
+- Travel distance: 17.8 km → 11.9 km (−33%)
+- Pick time: 91 min → 58 min (−36%)
+- Labor cost: −24% per order
+- Pick rate: 96/hr → 142/hr (+48%)
+- CO₂ per wave: −29%
+
+Newly generated AI insights:
+1. Congestion eliminated in Zone C — rerouted 3 pickers, dwell time back to baseline.
+2. Batch picking opportunity detected — 74 Wave-3 orders share SKU affinity across Zones A/B.
+3. SKU-145 relocated to Shelf A03 — high-velocity SKU moved closer to packing.
+
+Write a concise executive summary for the ops director in the required 4-section format (Summary / Reasoning / Business Impact / Recommendation). Keep it decisive and business-focused.`;
+          const result = await ask({
+            data: {
+              messages: [{ role: "user", text: prompt }],
+              contextText,
+            },
+          });
+          setTyping(false);
+          if (result.ok) {
+            setMsgs((m) => [
+              ...m,
+              { id: `a-opt-${Date.now()}`, role: "ai", text: result.text },
+            ]);
+          } else {
+            setMsgs((m) => [
+              ...m,
+              {
+                id: `a-opt-${Date.now()}`,
+                role: "ai",
+                text: `Couldn't reach the summary engine: ${result.error}`,
+              },
+            ]);
+          }
+        } catch (err) {
+          setTyping(false);
+          const message = err instanceof Error ? err.message : String(err);
+          setMsgs((m) => [
+            ...m,
+            { id: `a-opt-${Date.now()}`, role: "ai", text: `Executive summary failed.\n\n${message}` },
+          ]);
+        }
+      })();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const send = async (raw: string) => {
     const text = raw.trim();
     if (!text || typing) return;
