@@ -792,6 +792,7 @@ export function IsometricWarehouse({
                       strokeDashoffset={offset}
                     />
                     <path
+                      data-map-select
                       d={optRouteScreen}
                       fill="none"
                       stroke="#ECFDF5"
@@ -801,7 +802,20 @@ export function IsometricWarehouse({
                       strokeDasharray={`8 8`}
                       className="animate-route-dash"
                       opacity={0.9 * drawT}
+                      style={{ cursor: onSelectRoute ? "pointer" : "default" }}
+                      onClick={() => onSelectRoute?.("Optimized Wave 3 Route")}
                     />
+                    {/* invisible wide hit target */}
+                    <path
+                      data-map-select
+                      d={optRouteScreen}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth="24"
+                      style={{ cursor: onSelectRoute ? "pointer" : "default" }}
+                      onClick={() => onSelectRoute?.("Optimized Wave 3 Route")}
+                    />
+
                   </g>
                 );
               })()}
