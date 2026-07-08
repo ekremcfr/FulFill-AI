@@ -10,6 +10,7 @@ import {
   type InsightPriority,
   type InsightCategory,
 } from "@/lib/live-insights";
+import { onOptimizationComplete } from "@/lib/optimization-events";
 
 const REFRESH_MS = 15000;
 const MAX_VISIBLE = 6;
