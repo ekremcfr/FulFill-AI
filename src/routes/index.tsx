@@ -25,6 +25,11 @@ function WarehousePage() {
   const [opt, setOpt] = useState<OptState>({ phase: "idle", message: "", messageIndex: -1 });
   const [optimized, setOptimized] = useState(false);
 
+  useEffect(() => {
+    setSelectedShelf(selected ? `${selected.id} (SKU ${selected.sku})` : null);
+  }, [selected]);
+
+
   const triggerOptimize = () => {
     setSelected(null);
     setOptimized(false);
