@@ -72,7 +72,7 @@ function ReportsPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {[...studies, ...REPORTS].map((r) => (
-                <tr key={r.id} className="transition hover:bg-surface-muted/50">
+                <tr key={r.id} className={`transition hover:bg-surface-muted/50 ${latest && r.id === latest.id ? "bg-primary-soft/40 animate-in fade-in slide-in-from-top-2" : ""}`}>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
                       <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary">
