@@ -38,6 +38,55 @@ export function LiveInsightsFeed() {
     return () => clearInterval(t);
   }, [pool]);
 
+  // Optimization run → immediately prepend three new AI insights
+  useEffect(() => {
+    return onOptimizationComplete(() => {
+      const now = Date.now();
+      const seed = Math.random().toString(36).slice(2, 6);
+      const fresh: LiveInsight[] = [
+        {
+          id: `opt-congestion-${seed}`,
+          createdAt: now,
+          category: "congestion",
+          priority: "high",
+          title: "Congestion eliminated in Zone C",
+          summary:
+            "Rerouted 3 pickers away from Aisles J–K bottleneck; average dwell time back to shift baseline.",
+          businessImpact: "Zone C pick rate recovered to +6% above baseline.",
+          estimatedSavings: "$860 / day",
+          confidence: 0.93,
+        },
+        {
+          id: `opt-batching-${seed}`,
+          createdAt: now + 1,
+          category: "batching",
+          priority: "high",
+          title: "Batch picking opportunity detected",
+          summary:
+            "74 Wave-3 orders share tight SKU affinity across Zones A/B — batch-pick recommended over discrete.",
+          businessImpact: "+31% throughput on Wave 3, −18 min completion time.",
+          estimatedSavings: "$2,140 / week",
+          confidence: 0.9,
+        },
+        {
+          id: `opt-slot-${seed}`,
+          createdAt: now + 2,
+          category: "slotting",
+          priority: "medium",
+          title: "SKU-145 relocated to Shelf A03",
+          summary:
+            "High-velocity SKU-145 moved from Zone C to Shelf A03 (Zone A) — closer to packing station.",
+          businessImpact: "Eliminates ≈420 m/day of picker travel.",
+          estimatedSavings: "$1,820 / month",
+          confidence: 0.94,
+        },
+      ];
+      setVisible((prev) => [...fresh, ...prev].slice(0, MAX_VISIBLE));
+      setPulseId(fresh[0].id);
+      setTimeout(() => setPulseId(null), 2200);
+    });
+  }, []);
+
   return (
     <>
       <div className="card-surface flex min-h-0 flex-1 flex-col">
