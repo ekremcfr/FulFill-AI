@@ -269,12 +269,14 @@ export function IsometricWarehouse({
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    // Ignore drags started on shelves (they handle their own click)
+    // Ignore drags started on shelves / interactive overlays
     const target = e.target as SVGElement;
     if (target.closest?.("[data-rack-id]")) return;
+    if (target.closest?.("[data-map-select]")) return;
     dragRef.current = { sx: e.clientX, sy: e.clientY, tx, ty };
     (e.currentTarget as HTMLDivElement).setPointerCapture?.(e.pointerId);
   };
+
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (dragRef.current) {
       setTx(dragRef.current.tx + (e.clientX - dragRef.current.sx));
