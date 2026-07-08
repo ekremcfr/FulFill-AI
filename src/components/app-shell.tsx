@@ -95,6 +95,7 @@ function Sidebar() {
 }
 
 function TopBar() {
+  const [exportOpen, setExportOpen] = useState(false);
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-surface/80 px-5 backdrop-blur">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
