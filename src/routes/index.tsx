@@ -6,8 +6,9 @@ import {
   type OptPhase,
   type _RackData as RackData,
 } from "@/components/isometric-warehouse";
-import { INSIGHTS } from "@/lib/warehouse-data";
 import { setSelectedShelf } from "@/lib/copilot-context";
+import { LiveInsightsFeed } from "@/components/live-insights-feed";
+
 
 export const Route = createFileRoute("/")({
   component: WarehousePage,
