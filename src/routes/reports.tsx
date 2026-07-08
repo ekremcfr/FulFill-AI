@@ -71,7 +71,7 @@ function ReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {REPORTS.map((r) => (
+              {[...studies, ...REPORTS].map((r) => (
                 <tr key={r.id} className="transition hover:bg-surface-muted/50">
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
