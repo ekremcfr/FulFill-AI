@@ -116,6 +116,7 @@ function RootComponent() {
       <InvestorIntro />
       <Outlet />
       <Copilot />
+      <Toaster position="top-right" richColors closeButton />
     </QueryClientProvider>
   );
 }
