@@ -84,11 +84,15 @@ export const askCopilot = createServerFn({ method: "POST" })
         parts: [{ text: m.text }],
       }));
 
+      const systemInstruction = data.contextText
+        ? `${SYSTEM_PROMPT}\n\n${data.contextText}`
+        : SYSTEM_PROMPT;
+
       const response = await ai.models.generateContent({
         model: MODEL,
         contents,
         config: {
-          systemInstruction: SYSTEM_PROMPT,
+          systemInstruction,
           temperature: 0.7,
           maxOutputTokens: 512,
         },
