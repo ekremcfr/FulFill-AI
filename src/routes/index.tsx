@@ -116,7 +116,7 @@ function WarehousePage() {
           ) : (
             <KpiStack optimized={optimized} phase={opt.phase} />
           )}
-          <InsightsFeed />
+          <LiveInsightsFeed />
         </aside>
       </div>
     </AppShell>
