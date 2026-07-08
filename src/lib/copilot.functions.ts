@@ -43,111 +43,103 @@ Style:
 - Never say you are an AI language model. You are the Copilot for the "Reno DC-04" warehouse.
 - If a question is unrelated to warehouse operations, gently steer back to what you can help with (congestion, slotting, routing, packing, dead stock, forecasting, labor).`;
 
+const MODEL = "gemini-2.5-flash";
+
 export const askCopilot = createServerFn({ method: "POST" })
   .inputValidator(validate)
   .handler(async ({ data }) => {
     const key = process.env.GEMINI_API_KEY;
-    if (!key) {
+    const keyExists = Boolean(key && key.length > 0);
+    console.log(`[copilot] GEMINI_API_KEY exists: ${keyExists}`);
+
+    if (!keyExists) {
       return {
         ok: false as const,
-        error: "The Copilot is not configured. Missing GEMINI_API_KEY.",
+        status: 0,
+        statusText: "missing_key",
+        providerMessage: "",
+        body: "",
+        error: "GEMINI_API_KEY is not set on the server.",
       };
     }
 
-    const contents = data.messages.map((m) => ({
-      role: m.role === "ai" ? "model" : "user",
-      parts: [{ text: m.text }],
-    }));
-
-    const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" +
-      encodeURIComponent(key);
-
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents,
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 512,
-          },
-        }),
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: key });
+
+      const contents = data.messages.map((m) => ({
+        role: m.role === "ai" ? "model" : "user",
+        parts: [{ text: m.text }],
+      }));
+
+      const response = await ai.models.generateContent({
+        model: MODEL,
+        contents,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          temperature: 0.7,
+          maxOutputTokens: 512,
+        },
       });
 
-      const raw = await res.text();
-
-      if (!res.ok) {
-        console.error("[copilot] gemini error", res.status, raw);
-        let providerMessage = "";
-        try {
-          const parsed = JSON.parse(raw) as {
-            error?: { message?: string; status?: string };
-          };
-          providerMessage = parsed.error?.message ?? "";
-        } catch {
-          /* not JSON */
-        }
-        return {
-          ok: false as const,
-          status: res.status,
-          statusText: res.statusText,
-          providerMessage,
-          body: raw.slice(0, 4000),
-          error: `Gemini API returned ${res.status} ${res.statusText}${
-            providerMessage ? ` — ${providerMessage}` : ""
-          }`,
-        };
-      }
-
-      let json: {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      };
-      try {
-        json = JSON.parse(raw);
-      } catch (err) {
-        console.error("[copilot] gemini invalid JSON", err, raw);
-        return {
-          ok: false as const,
-          status: res.status,
-          statusText: res.statusText,
-          providerMessage: "",
-          body: raw.slice(0, 4000),
-          error: "Gemini returned a non-JSON response.",
-        };
-      }
-
-      const text =
-        json.candidates?.[0]?.content?.parts
-          ?.map((p) => p.text ?? "")
-          .join("")
-          .trim() ?? "";
-
+      const text = (response.text ?? "").trim();
       if (!text) {
+        console.error("[copilot] gemini empty response", JSON.stringify(response).slice(0, 1000));
         return {
           ok: false as const,
-          status: res.status,
-          statusText: res.statusText,
+          status: 200,
+          statusText: "empty_response",
           providerMessage: "",
-          body: raw.slice(0, 4000),
+          body: JSON.stringify(response).slice(0, 4000),
           error: "Gemini returned an empty response.",
         };
       }
 
       return { ok: true as const, text };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[copilot] gemini fetch failed", err);
+      const anyErr = err as {
+        message?: string;
+        status?: number;
+        statusText?: string;
+        response?: { status?: number; statusText?: string };
+        cause?: unknown;
+      };
+      const message =
+        anyErr?.message ?? (err instanceof Error ? err.message : String(err));
+      const status = anyErr?.status ?? anyErr?.response?.status ?? 0;
+      const statusText =
+        anyErr?.statusText ?? anyErr?.response?.statusText ?? "sdk_error";
+
+      let providerMessage = "";
+      let body = "";
+      // Gemini SDK errors often embed a JSON string with the provider payload
+      const jsonMatch = message?.match(/\{[\s\S]*\}$/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]) as {
+            error?: { message?: string; status?: string };
+          };
+          providerMessage = parsed.error?.message ?? "";
+          body = jsonMatch[0].slice(0, 4000);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      console.error("[copilot] gemini SDK error", {
+        status,
+        statusText,
+        message,
+        cause: anyErr?.cause,
+      });
+
       return {
         ok: false as const,
-        status: 0,
-        statusText: "network_error",
-        providerMessage: "",
-        body: "",
-        error: `Network error contacting Gemini: ${message}`,
+        status,
+        statusText,
+        providerMessage,
+        body,
+        error: `Gemini SDK error: ${message}`,
       };
     }
   });
-
