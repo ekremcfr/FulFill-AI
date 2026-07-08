@@ -90,7 +90,10 @@ function WarehousePage() {
               onOptimizeMessage={(message, messageIndex) =>
                 setOpt((p) => ({ ...p, message, messageIndex }))
               }
-              onOptimizeComplete={() => setOptimized(true)}
+              onOptimizeComplete={() => {
+                setOptimized(true);
+                emitOptimizationComplete();
+              }}
             />
 
             {/* Ambient activity indicator */}
