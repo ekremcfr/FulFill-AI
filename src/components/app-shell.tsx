@@ -136,6 +136,7 @@ function TopBar() {
           Run optimizer
         </button>
       </div>
+      <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
     </header>
   );
 }
