@@ -833,20 +833,25 @@ export function IsometricWarehouse({
 
               {/* Worker following route */}
               {(phase === "walk" || phase === "done") && (
-                <g transform={`translate(${workerScreen[0]} ${workerScreen[1]})`}>
+                <g
+                  data-map-select
+                  transform={`translate(${workerScreen[0]} ${workerScreen[1]})`}
+                  style={{ cursor: onSelectWorker ? "pointer" : "default" }}
+                  onClick={() => onSelectWorker?.("W-142")}
+                >
                   <ellipse rx="10" ry="3.5" fill="url(#worker-shadow)" />
                   <circle r="14" fill="#22C55E" opacity="0.18" filter="url(#opt-strong-glow)" />
                   <g>
                     <rect x="-3.5" y="-15" width="7" height="11" rx="1.6" fill="#22C55E" />
                     <circle cy="-18" r="3.1" fill="#F5D7A8" stroke="#8A6136" strokeWidth="0.4" />
                     <path d="M -3.2 -19.5 L 3.2 -19.5 L 2.6 -21.5 A 2.8 2.8 0 0 0 -2.6 -21.5 Z" fill="#0F5D2D" />
-                    {/* AI reticle */}
                     <circle r="18" fill="none" stroke="#22C55E" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.7">
                       <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite" />
                     </circle>
                   </g>
                 </g>
               )}
+
             </g>
           )}
         </g>
