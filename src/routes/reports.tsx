@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { REPORTS } from "@/lib/warehouse-data";
+import { NewStudyModal, type GeneratedStudy } from "@/components/new-study-modal";
 
 export const Route = createFileRoute("/reports")({
   head: () => ({
@@ -13,6 +15,9 @@ export const Route = createFileRoute("/reports")({
 });
 
 function ReportsPage() {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [studies, setStudies] = useState<GeneratedStudy[]>([]);
+  const latest = studies[0];
   return (
     <AppShell>
       <div className="mx-auto max-w-7xl p-5">
