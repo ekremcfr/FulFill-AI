@@ -1,5 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+
+import { ExportModal } from "@/components/export-modal";
 
 const NAV = [
   { to: "/", label: "Warehouse", icon: WarehouseIcon },
@@ -93,6 +95,7 @@ function Sidebar() {
 }
 
 function TopBar() {
+  const [exportOpen, setExportOpen] = useState(false);
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-surface/80 px-5 backdrop-blur">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -117,7 +120,13 @@ function TopBar() {
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           Wave 3 · 74 orders
         </button>
-        <button className="hidden rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground/80 transition hover:bg-surface-muted sm:inline-block">
+        <button
+          onClick={() => setExportOpen(true)}
+          className="hidden rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground/80 transition hover:bg-surface-muted sm:inline-flex items-center gap-1.5"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16" />
+          </svg>
           Export
         </button>
         <button className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:opacity-90">
@@ -127,6 +136,7 @@ function TopBar() {
           Run optimizer
         </button>
       </div>
+      <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
     </header>
   );
 }

@@ -12,6 +12,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { InvestorIntro } from "../components/investor-intro";
 import { Copilot } from "../components/copilot";
+import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
   return (
@@ -115,6 +116,7 @@ function RootComponent() {
       <InvestorIntro />
       <Outlet />
       <Copilot />
+      <Toaster position="top-right" richColors closeButton />
     </QueryClientProvider>
   );
 }
