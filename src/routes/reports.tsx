@@ -143,7 +143,45 @@ function ReportsPage() {
             </div>
           </div>
         </div>
+
+        {latest && (
+          <div className="mt-6 card-surface p-5 border-primary/40 animate-in fade-in slide-in-from-bottom-4">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-primary">Latest study · AI generated</p>
+                <h3 className="mt-1 font-display text-xl text-foreground">{latest.name}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{latest.reportSummary}</p>
+              </div>
+              <span className="rounded-md bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">Savings {latest.savings}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {latest.kpis.map((k) => (
+                <div key={k.label} className="rounded-lg border border-border bg-surface p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{k.label}</div>
+                  <div className="mt-1 font-display text-xl text-foreground">{k.value}</div>
+                  <div className="mt-0.5 text-[11px] text-emerald-600">{k.delta}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">AI recommendations</p>
+              <ul className="mt-2 space-y-2">
+                {latest.recommendations.map((r, i) => (
+                  <li key={i} className="flex gap-2 rounded-lg border border-border/60 bg-surface px-3 py-2 text-sm text-foreground">
+                    <span className="text-primary">→</span>{r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
+
+      <NewStudyModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onComplete={(s) => setStudies((prev) => [s, ...prev])}
+      />
     </AppShell>
   );
 }
