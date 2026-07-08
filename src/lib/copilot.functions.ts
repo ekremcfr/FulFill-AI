@@ -7,6 +7,7 @@ interface ChatTurn {
 
 interface CopilotInput {
   messages: ChatTurn[];
+  contextText?: string;
 }
 
 function validate(input: unknown): CopilotInput {
@@ -32,8 +33,12 @@ function validate(input: unknown): CopilotInput {
       text: (m as ChatTurn).text.slice(0, 4000),
     };
   });
-  return { messages: messages.slice(-20) };
+  const rawCtx = (input as { contextText?: unknown }).contextText;
+  const contextText =
+    typeof rawCtx === "string" ? rawCtx.slice(0, 8000) : undefined;
+  return { messages: messages.slice(-20), contextText };
 }
+
 
 const SYSTEM_PROMPT = `You are FulfillAI Copilot, an AI warehouse operations consultant embedded in the FulfillAI decision-intelligence platform.
 
@@ -79,11 +84,15 @@ export const askCopilot = createServerFn({ method: "POST" })
         parts: [{ text: m.text }],
       }));
 
+      const systemInstruction = data.contextText
+        ? `${SYSTEM_PROMPT}\n\n${data.contextText}`
+        : SYSTEM_PROMPT;
+
       const response = await ai.models.generateContent({
         model: MODEL,
         contents,
         config: {
-          systemInstruction: SYSTEM_PROMPT,
+          systemInstruction,
           temperature: 0.7,
           maxOutputTokens: 512,
         },

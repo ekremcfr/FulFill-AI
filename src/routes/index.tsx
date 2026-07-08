@@ -7,6 +7,7 @@ import {
   type _RackData as RackData,
 } from "@/components/isometric-warehouse";
 import { INSIGHTS } from "@/lib/warehouse-data";
+import { setSelectedShelf } from "@/lib/copilot-context";
 
 export const Route = createFileRoute("/")({
   component: WarehousePage,
@@ -23,6 +24,11 @@ function WarehousePage() {
   const [optimizeNonce, setOptimizeNonce] = useState(0);
   const [opt, setOpt] = useState<OptState>({ phase: "idle", message: "", messageIndex: -1 });
   const [optimized, setOptimized] = useState(false);
+
+  useEffect(() => {
+    setSelectedShelf(selected ? `${selected.id} (SKU ${selected.sku})` : null);
+  }, [selected]);
+
 
   const triggerOptimize = () => {
     setSelected(null);

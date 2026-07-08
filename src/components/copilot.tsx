@@ -2,6 +2,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 
 import { askCopilot } from "@/lib/copilot.functions";
+import { buildCopilotContext, formatContextForPrompt } from "@/lib/copilot-context";
+
 
 
 /* ============================================================
@@ -65,11 +67,13 @@ export function Copilot() {
     setTyping(true);
 
     try {
+      const contextText = formatContextForPrompt(buildCopilotContext());
       const result = await ask({
         data: {
           messages: history
             .filter((m) => m.id !== "greet")
             .map((m) => ({ role: m.role, text: m.text })),
+          contextText,
         },
       });
       setTyping(false);
