@@ -113,7 +113,7 @@ function SmartPickingPage() {
           },
         });
         if (res.ok) setAiSummary(res.text);
-        else setAiSummary(`Copilot unavailable: ${res.error ?? res.statusText}`);
+        else setAiSummary(`Copilot unavailable: ${res.error ?? "unknown error"}`);
       } catch (err) {
         setAiSummary(err instanceof Error ? err.message : String(err));
       } finally {
