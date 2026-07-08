@@ -67,11 +67,13 @@ export function Copilot() {
     setTyping(true);
 
     try {
+      const contextText = formatContextForPrompt(buildCopilotContext());
       const result = await ask({
         data: {
           messages: history
             .filter((m) => m.id !== "greet")
             .map((m) => ({ role: m.role, text: m.text })),
+          contextText,
         },
       });
       setTyping(false);
