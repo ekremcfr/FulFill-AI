@@ -527,14 +527,15 @@ export function IsometricWarehouse({
           <polygon points={floor} fill="url(#floor-grad)" stroke="#B8C1D1" strokeWidth="1.2" />
           <polygon points={floor} fill="url(#floor-lines)" opacity="0.5" />
 
-          {/* ZONE BANDS */}
+          {/* ZONE BANDS (clickable for AI analysis) */}
           {!heatmap && (
             <g opacity="0.55">
-              <polygon points={zoneA} fill="#F4A300" opacity="0.10" />
-              <polygon points={zoneB} fill="#183B6B" opacity="0.06" />
-              <polygon points={zoneC} fill="#183B6B" opacity="0.02" />
+              <polygon data-map-select points={zoneA} fill="#F4A300" opacity="0.10" style={{ cursor: onSelectZone ? "pointer" : "default" }} onClick={() => onSelectZone?.("A")} />
+              <polygon data-map-select points={zoneB} fill="#183B6B" opacity="0.06" style={{ cursor: onSelectZone ? "pointer" : "default" }} onClick={() => onSelectZone?.("B")} />
+              <polygon data-map-select points={zoneC} fill="#183B6B" opacity="0.02" style={{ cursor: onSelectZone ? "pointer" : "default" }} onClick={() => onSelectZone?.("C")} />
             </g>
           )}
+
 
           {/* AISLE STRIPES down each picking aisle */}
           {AISLES.map((a, ai) => {
