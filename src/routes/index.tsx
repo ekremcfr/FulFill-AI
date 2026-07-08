@@ -466,9 +466,11 @@ function SelectedRack({ rack, onClose }: { rack: RackData; onClose: () => void }
           </div>
         </div>
       </div>
+      <ShelfAiAnalysis rack={rack} />
     </div>
   );
 }
+
 
 function StatCell({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
