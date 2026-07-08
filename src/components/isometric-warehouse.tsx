@@ -186,11 +186,13 @@ const OPT_VISIT_SEQUENCE: string[] = (() => {
 export type OptPhase = "idle" | "dim" | "scan" | "route" | "walk" | "done";
 
 export const OPT_MESSAGES: Array<{ at: number; text: string }> = [
-  { at: 0,    text: "Analyzing order clusters…" },
-  { at: 1200, text: "Reading warehouse layout…" },
-  { at: 2600, text: "Detecting bottlenecks…" },
-  { at: 4200, text: "Calculating shortest paths…" },
-  { at: 5800, text: "Building optimized route…" },
+  { at: 0,     text: "Scanning warehouse…" },
+  { at: 1200,  text: "Loading inventory…" },
+  { at: 2400,  text: "Analyzing orders…" },
+  { at: 3800,  text: "Optimizing routes…" },
+  { at: 5400,  text: "Optimizing slotting…" },
+  { at: 7200,  text: "Calculating labor savings…" },
+  { at: 9200,  text: "Generating AI insights…" },
   { at: 12500, text: "Optimization complete." },
 ];
 
