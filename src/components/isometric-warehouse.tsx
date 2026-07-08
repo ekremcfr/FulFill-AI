@@ -218,6 +218,9 @@ const FORKLIFT_PATHS = [
 export interface IsometricWarehouseProps {
   className?: string;
   onSelectRack?: (r: RackData | null) => void;
+  onSelectZone?: (z: "A" | "B" | "C") => void;
+  onSelectWorker?: (id: string) => void;
+  onSelectRoute?: (label: string) => void;
   /** Increment to trigger the optimization cinematic. */
   optimizeNonce?: number;
   onOptimizePhase?: (phase: OptPhase) => void;
@@ -230,11 +233,15 @@ const VIEWBOX = { x: -820, y: -60, w: 1780, h: 1140 };
 export function IsometricWarehouse({
   className,
   onSelectRack,
+  onSelectZone,
+  onSelectWorker,
+  onSelectRoute,
   optimizeNonce = 0,
   onOptimizePhase,
   onOptimizeMessage,
   onOptimizeComplete,
 }: IsometricWarehouseProps) {
+
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
@@ -262,12 +269,14 @@ export function IsometricWarehouse({
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    // Ignore drags started on shelves (they handle their own click)
+    // Ignore drags started on shelves / interactive overlays
     const target = e.target as SVGElement;
     if (target.closest?.("[data-rack-id]")) return;
+    if (target.closest?.("[data-map-select]")) return;
     dragRef.current = { sx: e.clientX, sy: e.clientY, tx, ty };
     (e.currentTarget as HTMLDivElement).setPointerCapture?.(e.pointerId);
   };
+
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (dragRef.current) {
       setTx(dragRef.current.tx + (e.clientX - dragRef.current.sx));
@@ -518,14 +527,15 @@ export function IsometricWarehouse({
           <polygon points={floor} fill="url(#floor-grad)" stroke="#B8C1D1" strokeWidth="1.2" />
           <polygon points={floor} fill="url(#floor-lines)" opacity="0.5" />
 
-          {/* ZONE BANDS */}
+          {/* ZONE BANDS (clickable for AI analysis) */}
           {!heatmap && (
             <g opacity="0.55">
-              <polygon points={zoneA} fill="#F4A300" opacity="0.10" />
-              <polygon points={zoneB} fill="#183B6B" opacity="0.06" />
-              <polygon points={zoneC} fill="#183B6B" opacity="0.02" />
+              <polygon data-map-select points={zoneA} fill="#F4A300" opacity="0.10" style={{ cursor: onSelectZone ? "pointer" : "default" }} onClick={() => onSelectZone?.("A")} />
+              <polygon data-map-select points={zoneB} fill="#183B6B" opacity="0.06" style={{ cursor: onSelectZone ? "pointer" : "default" }} onClick={() => onSelectZone?.("B")} />
+              <polygon data-map-select points={zoneC} fill="#183B6B" opacity="0.02" style={{ cursor: onSelectZone ? "pointer" : "default" }} onClick={() => onSelectZone?.("C")} />
             </g>
           )}
+
 
           {/* AISLE STRIPES down each picking aisle */}
           {AISLES.map((a, ai) => {
@@ -782,6 +792,7 @@ export function IsometricWarehouse({
                       strokeDashoffset={offset}
                     />
                     <path
+                      data-map-select
                       d={optRouteScreen}
                       fill="none"
                       stroke="#ECFDF5"
@@ -791,7 +802,20 @@ export function IsometricWarehouse({
                       strokeDasharray={`8 8`}
                       className="animate-route-dash"
                       opacity={0.9 * drawT}
+                      style={{ cursor: onSelectRoute ? "pointer" : "default" }}
+                      onClick={() => onSelectRoute?.("Optimized Wave 3 Route")}
                     />
+                    {/* invisible wide hit target */}
+                    <path
+                      data-map-select
+                      d={optRouteScreen}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth="24"
+                      style={{ cursor: onSelectRoute ? "pointer" : "default" }}
+                      onClick={() => onSelectRoute?.("Optimized Wave 3 Route")}
+                    />
+
                   </g>
                 );
               })()}
@@ -823,20 +847,25 @@ export function IsometricWarehouse({
 
               {/* Worker following route */}
               {(phase === "walk" || phase === "done") && (
-                <g transform={`translate(${workerScreen[0]} ${workerScreen[1]})`}>
+                <g
+                  data-map-select
+                  transform={`translate(${workerScreen[0]} ${workerScreen[1]})`}
+                  style={{ cursor: onSelectWorker ? "pointer" : "default" }}
+                  onClick={() => onSelectWorker?.("W-142")}
+                >
                   <ellipse rx="10" ry="3.5" fill="url(#worker-shadow)" />
                   <circle r="14" fill="#22C55E" opacity="0.18" filter="url(#opt-strong-glow)" />
                   <g>
                     <rect x="-3.5" y="-15" width="7" height="11" rx="1.6" fill="#22C55E" />
                     <circle cy="-18" r="3.1" fill="#F5D7A8" stroke="#8A6136" strokeWidth="0.4" />
                     <path d="M -3.2 -19.5 L 3.2 -19.5 L 2.6 -21.5 A 2.8 2.8 0 0 0 -2.6 -21.5 Z" fill="#0F5D2D" />
-                    {/* AI reticle */}
                     <circle r="18" fill="none" stroke="#22C55E" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.7">
                       <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite" />
                     </circle>
                   </g>
                 </g>
               )}
+
             </g>
           )}
         </g>
