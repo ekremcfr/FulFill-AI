@@ -9,6 +9,9 @@ import {
 import { setSelectedShelf } from "@/lib/copilot-context";
 import { LiveInsightsFeed } from "@/components/live-insights-feed";
 import { ShelfAiAnalysis } from "@/components/shelf-ai-analysis";
+import { ProactiveInsightPanel } from "@/components/proactive-insight-panel";
+import type { MapSelection } from "@/lib/map-selection";
+import { PICK_TASKS } from "@/lib/warehouse-data";
 
 
 
@@ -27,17 +30,21 @@ function WarehousePage() {
   const [optimizeNonce, setOptimizeNonce] = useState(0);
   const [opt, setOpt] = useState<OptState>({ phase: "idle", message: "", messageIndex: -1 });
   const [optimized, setOptimized] = useState(false);
+  const [mapSelection, setMapSelection] = useState<MapSelection | null>(null);
 
   useEffect(() => {
     setSelectedShelf(selected ? `${selected.id} (SKU ${selected.sku})` : null);
+    if (selected) setMapSelection({ kind: "shelf", rack: selected });
   }, [selected]);
 
 
   const triggerOptimize = () => {
     setSelected(null);
+    setMapSelection(null);
     setOptimized(false);
     setOptimizeNonce((n) => n + 1);
   };
+
 
   return (
     <AppShell>
