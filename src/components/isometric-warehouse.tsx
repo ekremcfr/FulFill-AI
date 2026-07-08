@@ -218,6 +218,9 @@ const FORKLIFT_PATHS = [
 export interface IsometricWarehouseProps {
   className?: string;
   onSelectRack?: (r: RackData | null) => void;
+  onSelectZone?: (z: "A" | "B" | "C") => void;
+  onSelectWorker?: (id: string) => void;
+  onSelectRoute?: (label: string) => void;
   /** Increment to trigger the optimization cinematic. */
   optimizeNonce?: number;
   onOptimizePhase?: (phase: OptPhase) => void;
@@ -230,11 +233,15 @@ const VIEWBOX = { x: -820, y: -60, w: 1780, h: 1140 };
 export function IsometricWarehouse({
   className,
   onSelectRack,
+  onSelectZone,
+  onSelectWorker,
+  onSelectRoute,
   optimizeNonce = 0,
   onOptimizePhase,
   onOptimizeMessage,
   onOptimizeComplete,
 }: IsometricWarehouseProps) {
+
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
