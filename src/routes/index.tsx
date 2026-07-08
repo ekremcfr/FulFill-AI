@@ -6,8 +6,9 @@ import {
   type OptPhase,
   type _RackData as RackData,
 } from "@/components/isometric-warehouse";
-import { INSIGHTS } from "@/lib/warehouse-data";
 import { setSelectedShelf } from "@/lib/copilot-context";
+import { LiveInsightsFeed } from "@/components/live-insights-feed";
+
 
 export const Route = createFileRoute("/")({
   component: WarehousePage,
@@ -115,7 +116,7 @@ function WarehousePage() {
           ) : (
             <KpiStack optimized={optimized} phase={opt.phase} />
           )}
-          <InsightsFeed />
+          <LiveInsightsFeed />
         </aside>
       </div>
     </AppShell>
@@ -478,59 +479,3 @@ function StatCell({ label, value, accent }: { label: string; value: string; acce
   );
 }
 
-function InsightsFeed() {
-  return (
-    <div className="card-surface flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-primary-soft">
-              <svg viewBox="0 0 24 24" className="h-3 w-3 text-primary" fill="currentColor">
-                <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
-              </svg>
-            </span>
-            <h2 className="text-sm font-semibold text-foreground">AI Insights</h2>
-          </div>
-          <p className="text-[11px] text-muted-foreground">4 new · updated 12s ago</p>
-        </div>
-        <button className="text-[11px] font-medium text-primary hover:underline">View all</button>
-      </div>
-      <ul className="flex-1 divide-y divide-border overflow-y-auto">
-        {INSIGHTS.map((it) => (
-          <li key={it.id} className="p-4 transition hover:bg-surface-muted/50">
-            <div className="flex items-start gap-2.5">
-              <SeverityDot severity={it.severity} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium leading-snug text-foreground">{it.title}</p>
-                  <span
-                    className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
-                      it.severity === "opportunity"
-                        ? "bg-emerald-50 text-emerald-700"
-                        : it.severity === "warning"
-                          ? "bg-amber-50 text-amber-700"
-                          : "bg-slate-100 text-slate-700"
-                    }`}
-                  >
-                    {it.impact}
-                  </span>
-                </div>
-                <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{it.detail}</p>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function SeverityDot({ severity }: { severity: "opportunity" | "warning" | "info" }) {
-  const map = { opportunity: "bg-emerald-500", warning: "bg-amber-500", info: "bg-slate-400" };
-  return (
-    <span className="relative mt-1 flex h-2 w-2 shrink-0">
-      <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${map[severity]}`} />
-      <span className={`relative inline-flex h-2 w-2 rounded-full ${map[severity]}`} />
-    </span>
-  );
-}
