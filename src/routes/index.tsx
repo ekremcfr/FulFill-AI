@@ -81,6 +81,9 @@ function WarehousePage() {
             <IsometricWarehouse
               className="absolute inset-0 h-full w-full"
               onSelectRack={setSelected}
+              onSelectZone={(z) => setMapSelection({ kind: "zone", zone: z })}
+              onSelectWorker={(id) => setMapSelection({ kind: "worker", workerId: id })}
+              onSelectRoute={(label) => setMapSelection({ kind: "route", label })}
               optimizeNonce={optimizeNonce}
               onOptimizePhase={(phase) => setOpt((p) => ({ ...p, phase }))}
               onOptimizeMessage={(message, messageIndex) =>
@@ -101,9 +104,44 @@ function WarehousePage() {
               </div>
             </div>
 
+            {/* Proactive contextual AI insight panel */}
+            <ProactiveInsightPanel
+              selection={mapSelection}
+              onClose={() => {
+                setMapSelection(null);
+                setSelected(null);
+              }}
+            />
+
+            {/* Live orders strip — clicking an order triggers proactive AI */}
+            <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-white/95 px-2 py-1.5 shadow-lg backdrop-blur">
+              <span className="pl-1.5 pr-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Live orders
+              </span>
+              {PICK_TASKS.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() =>
+                    setMapSelection({
+                      kind: "order",
+                      orderId: t.order,
+                      sku: t.sku,
+                      aisle: t.aisle,
+                      qty: t.qty,
+                    })
+                  }
+                  className="rounded-full border border-border bg-surface-muted/60 px-2 py-0.5 font-mono text-[10px] text-foreground transition hover:border-emerald-400 hover:bg-emerald-50"
+                  title={`${t.sku} · Aisle ${t.aisle} · qty ${t.qty}`}
+                >
+                  {t.order}
+                </button>
+              ))}
+            </div>
+
             {/* AI cinematic panel */}
             <AIOptimizerPanel opt={opt} />
           </div>
+
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface-muted/40 px-5 py-2.5 text-[11px] text-muted-foreground">
             <div className="flex items-center gap-4">
