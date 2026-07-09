@@ -85,7 +85,7 @@ function Sidebar() {
             EM
           </div>
           <div className="min-w-0 leading-tight">
-            <div className="truncate text-sm font-medium">Elena Marín</div>
+            <div className="truncate text-sm font-medium">Ekrem Bicakci</div>
             <div className="truncate text-[11px] text-sidebar-muted">VP Operations</div>
           </div>
         </div>
