@@ -233,6 +233,43 @@ Write a decisive executive summary for the ops director. Keep it concise.`;
     }, 500);
   };
 
+  const explainDetail = async (id: string) => {
+    const target = msgs.find((x) => x.id === id);
+    if (!target?.card || target.detailed || target.loadingDetailed) return;
+    setMsgs((m) => m.map((x) => (x.id === id ? { ...x, loadingDetailed: true } : x)));
+    try {
+      const contextText = formatContextForPrompt(buildCopilotContext());
+      const prompt = `Expand the following FulfillAI concise recommendation into a full detailed operational analysis.
+
+Concise:
+- Summary: ${target.card.summary}
+- Business Impact: ${target.card.businessImpact}
+- Recommendation: ${target.card.recommendation}
+- Confidence: ${Math.round(target.card.confidence * 100)}%
+
+Return the full 4-section detailed explanation.`;
+      const result = await ask({
+        data: {
+          messages: [{ role: "user", text: prompt }],
+          contextText,
+          mode: "detailed",
+        },
+      });
+      setMsgs((m) =>
+        m.map((x) =>
+          x.id === id
+            ? { ...x, loadingDetailed: false, detailed: result.ok ? result.text : `Couldn't load detailed analysis: ${result.error}` }
+            : x,
+        ),
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setMsgs((m) =>
+        m.map((x) => (x.id === id ? { ...x, loadingDetailed: false, detailed: `Failed: ${message}` } : x)),
+      );
+    }
+  };
+
   return (
     <>
       {/* Launcher */}
