@@ -17,12 +17,45 @@ interface Suggestion {
   improvement: string;
 }
 
+interface ConciseCard {
+  summary: string;
+  businessImpact: string;
+  recommendation: string;
+  confidence: number; // 0..1
+}
+
 interface Msg {
   id: string;
   role: "user" | "ai";
   text: string;
+  card?: ConciseCard;
+  detailed?: string;
+  loadingDetailed?: boolean;
   suggestion?: Suggestion;
   applied?: boolean;
+}
+
+function parseCard(raw: string): ConciseCard | null {
+  const trimmed = raw.trim().replace(/^```json\s*|\s*```$/g, "");
+  try {
+    const j = JSON.parse(trimmed);
+    if (
+      typeof j?.summary === "string" &&
+      typeof j?.businessImpact === "string" &&
+      typeof j?.recommendation === "string"
+    ) {
+      const c = typeof j.confidence === "number" ? j.confidence : 0.85;
+      return {
+        summary: j.summary,
+        businessImpact: j.businessImpact,
+        recommendation: j.recommendation,
+        confidence: Math.max(0, Math.min(1, c)),
+      };
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
 }
 
 
