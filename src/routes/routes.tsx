@@ -291,11 +291,20 @@ function SmartPickingPage() {
             {(phase === "live" || phase === "complete") && (
               <BeforeAfterStrip progress={phase === "complete" ? 1 : progress} />
             )}
-            {/* Floating destination toast */}
-            {phase === "live" && remainingPicks > 0 && (
-              <DestinationToast stop={PICK_STOPS[nextStopIdx]} />
+            {/* Google Maps style turn-by-turn card */}
+            {(phase === "live" || phase === "complete") && (
+              <TurnByTurnCard
+                phase={phase}
+                progress={progress}
+                visitedCount={visitedCount}
+                totalM={TOTAL_M}
+                walkSpeed={walkSpeed}
+              />
             )}
+            {/* Pick-completed flash */}
+            {pickedFlash && <PickedFlash stop={pickedFlash} />}
             {phase === "complete" && <ArrivalToast />}
+
           </section>
 
           {/* RIGHT — Live nav panel */}
