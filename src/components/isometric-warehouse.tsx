@@ -277,6 +277,7 @@ export function IsometricWarehouse({
     if (target.closest?.("[data-rack-id]")) return;
     if (target.closest?.("[data-map-select]")) return;
     dragRef.current = { sx: e.clientX, sy: e.clientY, tx, ty };
+    setDragging(true);
     (e.currentTarget as HTMLDivElement).setPointerCapture?.(e.pointerId);
   };
 
@@ -290,7 +291,7 @@ export function IsometricWarehouse({
       setTip({ x: e.clientX - r.left, y: e.clientY - r.top });
     }
   };
-  const onPointerUp = () => { dragRef.current = null; };
+  const onPointerUp = () => { dragRef.current = null; setDragging(false); };
   const onWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     const next = Math.min(2.2, Math.max(0.5, scale * (1 - e.deltaY * 0.0012)));
@@ -306,9 +307,14 @@ export function IsometricWarehouse({
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
+  const fitView = () => { setScale(1); setTx(0); setTy(0); };
   const resetView = () => { setScale(1); setTx(0); setTy(0); setRot(0); };
+  const zoomIn = () => setScale((s) => Math.min(2.2, s * 1.2));
+  const zoomOut = () => setScale((s) => Math.max(0.5, s / 1.2));
+  const rotateStep = (dir: 1 | -1) => setRot((r) => ((r + dir * 90) % 360 + 360) % 360);
 
   const cameraTransform = `translate(${tx} ${ty}) scale(${scale}) rotate(${rot})`;
+  const cameraStyle = { transition: dragging ? "none" : "transform 260ms cubic-bezier(0.22, 1, 0.36, 1)" } as const;
 
   // Precompute floor corners
   const floor = poly([0, 0], [FLOOR_W, 0], [FLOOR_W, FLOOR_H], [0, FLOOR_H]);
