@@ -8,6 +8,7 @@ interface ChatTurn {
 interface CopilotInput {
   messages: ChatTurn[];
   contextText?: string;
+  mode?: "concise" | "detailed";
 }
 
 function validate(input: unknown): CopilotInput {
@@ -36,7 +37,9 @@ function validate(input: unknown): CopilotInput {
   const rawCtx = (input as { contextText?: unknown }).contextText;
   const contextText =
     typeof rawCtx === "string" ? rawCtx.slice(0, 8000) : undefined;
-  return { messages: messages.slice(-20), contextText };
+  const rawMode = (input as { mode?: unknown }).mode;
+  const mode: "concise" | "detailed" = rawMode === "detailed" ? "detailed" : "concise";
+  return { messages: messages.slice(-20), contextText, mode };
 }
 
 
