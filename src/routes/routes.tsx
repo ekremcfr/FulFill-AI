@@ -778,14 +778,31 @@ function TurnByTurnCard({
   const rest = upcoming.slice(1, 3);
   const done = phase === "complete";
 
+  const [dismissed, setDismissed] = React.useState(false);
+  React.useEffect(() => {
+    if (phase === "live") setDismissed(false);
+  }, [phase]);
+  if (dismissed) return null;
+
   return (
     <div className="pointer-events-none absolute left-3 top-3 z-20 w-[260px] animate-fade-in">
       <div className="rounded-2xl border border-white/10 bg-[oklch(0.16_0.04_260)]/95 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-xl">
         {/* Header pill */}
         <div className="flex items-center gap-2 border-b border-white/10 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">
           <span className={`inline-block h-1.5 w-1.5 rounded-full ${done ? "bg-emerald-400" : "animate-pulse bg-emerald-400"}`} />
-          {done ? "Arrived · Packing" : "Next stop"}
+          <span className="flex-1">{done ? "Arrived · Packing" : "Next stop"}</span>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            aria-label="Close"
+            className="pointer-events-auto -mr-1 flex h-5 w-5 items-center justify-center rounded-full text-white/50 transition hover:bg-white/10 hover:text-white"
+          >
+            <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         </div>
+
 
         {/* Primary directive */}
         <div className="px-3.5 py-3 text-white">
