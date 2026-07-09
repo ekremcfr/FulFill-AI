@@ -422,9 +422,10 @@ function NavigationMap({
   currentStopIdx: number;
 }) {
   const optimizedD = useMemo(
-    () => "M " + OPTIMIZED_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L "),
+    () => "M " + NAV_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L "),
     [],
   );
+
   const naiveD = useMemo(
     () => "M " + NAIVE_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L "),
     [],
