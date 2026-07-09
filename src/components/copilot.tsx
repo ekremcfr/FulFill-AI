@@ -174,13 +174,15 @@ Write a decisive executive summary for the ops director. Keep it concise.`;
             .filter((m) => m.id !== "greet")
             .map((m) => ({ role: m.role, text: m.text })),
           contextText,
+          mode: "concise",
         },
       });
       setTyping(false);
       if (result.ok) {
+        const card = parseCard(result.text);
         setMsgs((m) => [
           ...m,
-          { id: `a-${Date.now()}`, role: "ai", text: result.text },
+          { id: `a-${Date.now()}`, role: "ai", text: card ? "" : result.text, card: card ?? undefined },
         ]);
       } else {
         console.error("[copilot] gemini request failed", result);
