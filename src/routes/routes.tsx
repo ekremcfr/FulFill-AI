@@ -724,21 +724,149 @@ function ScanOverlay({ msgIdx }: { msgIdx: number }) {
   );
 }
 
-function DestinationToast({ stop }: { stop: PickStop }) {
+/**
+ * Google Maps-style turn-by-turn navigation card.
+ * Shows the next stop with prominent distance + action, followed by the two
+ * upcoming stops in a compact "Then" list. Continues updating past the final
+ * pick to guide the worker into the packing station.
+ */
+function TurnByTurnCard({
+  phase,
+  progress,
+  visitedCount,
+  totalM,
+  walkSpeed,
+}: {
+  phase: NavPhase;
+  progress: number;
+  visitedCount: number;
+  totalM: number;
+  walkSpeed: number;
+}) {
+  // Build upcoming waypoint list: remaining picks + packing at end.
+  const upcoming: Array<{
+    kind: "pick" | "packing";
+    label: string;
+    sub: string;
+    fraction: number;
+  }> = [];
+  for (let i = visitedCount; i < PICK_STOPS.length; i++) {
+    const s = PICK_STOPS[i];
+    upcoming.push({
+      kind: "pick",
+      label: `Shelf ${s.bin}`,
+      sub: `Pick ${s.qty}× ${s.sku}`,
+      fraction: PICK_FRACTIONS[i],
+    });
+  }
+  upcoming.push({
+    kind: "packing",
+    label: "Packing station",
+    sub: "Drop off wave",
+    fraction: PACKING_FRACTION,
+  });
+
+  const speed = Math.max(walkSpeed, 0.9); // avoid div-by-zero for ETA maths
+  const distTo = (frac: number) => Math.max(0, Math.round((frac - progress) * totalM));
+  const etaTo = (m: number) => Math.max(0, Math.round(m / speed));
+
+  const first = upcoming[0];
+  const rest = upcoming.slice(1, 3);
+  const done = phase === "complete";
+
   return (
-    <div className="pointer-events-none absolute right-3 top-3 z-20 flex w-[220px] items-center gap-2.5 rounded-xl border border-border bg-white/95 px-3 py-2 shadow-lg backdrop-blur animate-fade-in">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-          <path d="M12 2C7.6 2 4 5.6 4 10c0 5.6 8 12 8 12s8-6.4 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
-        </svg>
-      </div>
-      <div className="min-w-0">
-        <div className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Next destination</div>
-        <div className="truncate font-mono text-[12px] font-semibold text-foreground">{stop.bin} · {stop.sku}</div>
+    <div className="pointer-events-none absolute left-3 top-3 z-20 w-[260px] animate-fade-in">
+      <div className="rounded-2xl border border-white/10 bg-[oklch(0.16_0.04_260)]/95 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+        {/* Header pill */}
+        <div className="flex items-center gap-2 border-b border-white/10 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${done ? "bg-emerald-400" : "animate-pulse bg-emerald-400"}`} />
+          {done ? "Arrived · Packing" : "Next stop"}
+        </div>
+
+        {/* Primary directive */}
+        <div className="px-3.5 py-3 text-white">
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                first.kind === "packing" ? "bg-orange-500/20 ring-1 ring-orange-400/40" : "bg-blue-500/20 ring-1 ring-blue-400/40"
+              }`}
+            >
+              {first.kind === "packing" ? (
+                <svg viewBox="0 0 24 24" className="h-5 w-5 text-orange-300" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 7l9-4 9 4v10l-9 4-9-4V7z" />
+                  <path d="M3 7l9 4 9-4M12 11v10" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5 text-blue-300" fill="currentColor">
+                  <path d="M12 2C7.6 2 4 5.6 4 10c0 5.6 8 12 8 12s8-6.4 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
+                </svg>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-display text-[17px] leading-tight text-white">
+                {first.label}
+              </div>
+              <div className="mt-0.5 truncate text-[11.5px] text-white/60">
+                {first.sub}
+              </div>
+              <div className="mt-2 flex items-baseline gap-2 font-mono">
+                <span className="text-[22px] font-semibold tabular-nums text-emerald-300">
+                  {distTo(first.fraction)}
+                </span>
+                <span className="text-[11px] text-white/50">m</span>
+                <span className="ml-1 text-[11px] text-white/40">
+                  · {etaTo(distTo(first.fraction))}s
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Then list */}
+        {rest.length > 0 && (
+          <div className="border-t border-white/10 px-3.5 py-2.5">
+            <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-white/40">Then</div>
+            <ul className="space-y-1.5">
+              {rest.map((u, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-[11.5px]">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={`inline-block h-1.5 w-1.5 rounded-full ${
+                        u.kind === "packing" ? "bg-orange-400" : "bg-blue-400"
+                      }`}
+                    />
+                    <span className="truncate text-white/80">{u.label}</span>
+                  </div>
+                  <span className="font-mono text-[11px] text-white/50">{distTo(u.fraction)} m</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+/**
+ * Brief "Picked X" flash when the worker completes a pick.
+ */
+function PickedFlash({ stop }: { stop: PickStop }) {
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 animate-fade-in">
+      <div className="flex items-center gap-2.5 rounded-full border border-emerald-300 bg-white px-3 py-1.5 shadow-lg">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
+          <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M5 12l5 5 9-11" /></svg>
+        </span>
+        <span className="text-[11px] font-semibold text-emerald-800">
+          Picked {stop.qty}× {stop.sku}
+        </span>
+        <span className="font-mono text-[10px] text-emerald-600">· {stop.bin}</span>
+      </div>
+    </div>
+  );
+}
+
 
 function ArrivalToast() {
   return (
