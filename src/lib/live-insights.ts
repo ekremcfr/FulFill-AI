@@ -18,6 +18,7 @@ export interface LiveInsight {
   businessImpact: string;
   estimatedSavings: string;
   confidence: number; // 0..1
+  recommendation: string;
 }
 
 let _uid = 0;
