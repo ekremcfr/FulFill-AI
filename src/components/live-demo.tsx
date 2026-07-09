@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Live Demo · Presentation Mode
@@ -48,10 +49,20 @@ export interface LiveDemoProps {
 
 export function LiveDemo({ onTriggerOptimize, canTrigger }: LiveDemoProps) {
   const [running, setRunning] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const rafRef = useRef<number | null>(null);
   const startRef = useRef<number>(0);
   const triggeredRef = useRef<boolean>(false);
+  const onTriggerOptimizeRef = useRef(onTriggerOptimize);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    onTriggerOptimizeRef.current = onTriggerOptimize;
+  }, [onTriggerOptimize]);
 
   const currentChapter = useMemo(() => {
     let ch = CH[0];
@@ -67,7 +78,7 @@ export function LiveDemo({ onTriggerOptimize, canTrigger }: LiveDemoProps) {
       // Fire the real optimizer once, at the trigger point.
       if (!triggeredRef.current && t >= OPTIMIZE_TRIGGER_AT) {
         triggeredRef.current = true;
-        onTriggerOptimize();
+        onTriggerOptimizeRef.current();
       }
       if (t < DEMO_END_AT + 3500) {
         rafRef.current = requestAnimationFrame(tick);
@@ -78,7 +89,7 @@ export function LiveDemo({ onTriggerOptimize, canTrigger }: LiveDemoProps) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [running, onTriggerOptimize]);
+  }, [running]);
 
   const start = () => {
     if (!canTrigger) return;
@@ -107,12 +118,13 @@ export function LiveDemo({ onTriggerOptimize, canTrigger }: LiveDemoProps) {
         </span>
       </button>
 
-      {running && (
+      {running && mounted && createPortal(
         <DemoOverlay
           elapsed={elapsed}
           chapter={currentChapter}
           onExit={stop}
-        />
+        />,
+        document.body,
       )}
     </>
   );
@@ -135,7 +147,7 @@ function DemoOverlay({
   const showSummary = elapsed >= CH[9].at;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-40">
+    <div className="pointer-events-none fixed inset-0 z-[9990]">
       {/* Cinematic vignette */}
       <div
         className="absolute inset-0"
@@ -255,8 +267,8 @@ function ExecutiveSummary({ onExit }: { onExit: () => void }) {
   ];
 
   return (
-    <div className="pointer-events-auto fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-[oklch(0.08_0.03_260)]/85 backdrop-blur-xl animate-fade-in p-4">
-      <div className="relative my-auto w-[min(880px,94vw)] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-3xl border border-white/10 bg-gradient-to-br from-[oklch(0.16_0.05_260)] to-[oklch(0.11_0.04_260)] p-8 text-white shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]">
+    <div className="pointer-events-auto fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-[oklch(0.08_0.03_260)]/92 p-4 backdrop-blur-xl animate-fade-in">
+      <div className="relative my-auto w-[min(920px,94vw)] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-3xl border border-white/15 bg-[oklch(0.13_0.04_260)] p-8 text-white shadow-[0_40px_140px_-24px_rgba(0,0,0,0.95)] ring-1 ring-white/10">
         {/* Close (X) button */}
         <button
           onClick={onExit}
