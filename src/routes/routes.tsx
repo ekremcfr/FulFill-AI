@@ -86,16 +86,38 @@ const SCAN_MESSAGES = [
   "Optimization complete.",
 ];
 
-// Pre-computed segment lengths for the optimized route → used to place the
-// worker at any progress fraction 0..1.
+// Extend the route: after the final pick, worker heads to the PACKING station
+// (not back to the dock). This is the last leg of the journey.
+const PACKING_POINT: [number, number] = [1105, 130];
+
+// Full navigation route: dock start → picks (via OPTIMIZED_ROUTE interior) →
+// packing station. Strips the last two "return to dock" points from
+// OPTIMIZED_ROUTE and appends a clean corridor + packing approach.
+const NAV_ROUTE: Array<[number, number]> = (() => {
+  // Keep dock start + all interior waypoints up to and including the last pick
+  // (aisle H at index 11). Then append a corridor path to packing.
+  const trimmed = OPTIMIZED_ROUTE.slice(0, 12).map(
+    ([x, y]) => [x, y] as [number, number],
+  );
+  return [
+    ...trimmed,
+    [816, 130], // up to top corridor
+    [1050, 130], // over to packing
+    PACKING_POINT, // arrive
+  ];
+})();
+
+
+// Pre-computed segment lengths for the nav route → used to place the worker
+// at any progress fraction 0..1.
 const OPT_SEGMENTS = (() => {
   const segs: { len: number; from: [number, number]; to: [number, number] }[] = [];
-  for (let i = 0; i < OPTIMIZED_ROUTE.length - 1; i++) {
-    const a = OPTIMIZED_ROUTE[i];
-    const b = OPTIMIZED_ROUTE[i + 1];
+  for (let i = 0; i < NAV_ROUTE.length - 1; i++) {
+    const a = NAV_ROUTE[i];
+    const b = NAV_ROUTE[i + 1];
     segs.push({
-      from: a as [number, number],
-      to: b as [number, number],
+      from: a,
+      to: b,
       len: Math.hypot(b[0] - a[0], b[1] - a[1]),
     });
   }
@@ -114,7 +136,7 @@ function pointAt(fraction: number): [number, number] {
     }
     acc += s.len;
   }
-  return OPTIMIZED_ROUTE[OPTIMIZED_ROUTE.length - 1] as [number, number];
+  return NAV_ROUTE[NAV_ROUTE.length - 1];
 }
 
 // Fraction along the total route at which each pick stop sits.
@@ -130,6 +152,10 @@ const PICK_FRACTIONS = (() => {
     return 0;
   });
 })();
+
+// Packing station is the final destination (progress = 1.0).
+const PACKING_FRACTION = 1.0;
+
 
 const LIVE_DURATION_MS = 32000; // ~32s live picker traversal
 
@@ -216,6 +242,25 @@ function SmartPickingPage() {
   const remainingSec = Math.max(0, Math.round((1 - progress) * (LIVE_DURATION_MS / 1000)));
   const remainingPicks = PICK_STOPS.length - visitedCount;
   const efficiency = phase === "idle" ? 0 : Math.min(100, 74 + progress * 24);
+  // Walking speed jitters around 1.35 m/s while live, freezes on complete.
+  const walkSpeed = phase === "live" ? 1.28 + Math.sin(progress * 20) * 0.12 : phase === "complete" ? 0 : 0;
+  // Approx total in-wave path length used for the turn-by-turn card (~480 m).
+  const TOTAL_M = 480;
+
+  // Detect when a pick has just been completed → flash toast for 1.6s.
+  const [pickedFlash, setPickedFlash] = useState<PickStop | null>(null);
+  const prevVisitedRef = useRef(0);
+  useEffect(() => {
+    if (visitedCount > prevVisitedRef.current && visitedCount <= PICK_STOPS.length) {
+      const justPicked = PICK_STOPS[visitedCount - 1];
+      setPickedFlash(justPicked);
+      const t = window.setTimeout(() => setPickedFlash(null), 1800);
+      prevVisitedRef.current = visitedCount;
+      return () => window.clearTimeout(t);
+    }
+    prevVisitedRef.current = visitedCount;
+  }, [visitedCount]);
+
 
   return (
     <AppShell>
@@ -246,11 +291,20 @@ function SmartPickingPage() {
             {(phase === "live" || phase === "complete") && (
               <BeforeAfterStrip progress={phase === "complete" ? 1 : progress} />
             )}
-            {/* Floating destination toast */}
-            {phase === "live" && remainingPicks > 0 && (
-              <DestinationToast stop={PICK_STOPS[nextStopIdx]} />
+            {/* Google Maps style turn-by-turn card */}
+            {(phase === "live" || phase === "complete") && (
+              <TurnByTurnCard
+                phase={phase}
+                progress={progress}
+                visitedCount={visitedCount}
+                totalM={TOTAL_M}
+                walkSpeed={walkSpeed}
+              />
             )}
+            {/* Pick-completed flash */}
+            {pickedFlash && <PickedFlash stop={pickedFlash} />}
             {phase === "complete" && <ArrivalToast />}
+
           </section>
 
           {/* RIGHT — Live nav panel */}
@@ -263,10 +317,12 @@ function SmartPickingPage() {
               remainingSec={remainingSec}
               remainingPicks={remainingPicks}
               efficiency={efficiency}
+              walkSpeed={walkSpeed}
               progress={progress}
               visitedCount={visitedCount}
               totalStops={PICK_STOPS.length}
             />
+
             <AiNarrationCard
               phase={phase}
               rationale={rationale}
@@ -396,9 +452,10 @@ function NavigationMap({
   currentStopIdx: number;
 }) {
   const optimizedD = useMemo(
-    () => "M " + OPTIMIZED_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L "),
+    () => "M " + NAV_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L "),
     [],
   );
+
   const naiveD = useMemo(
     () => "M " + NAIVE_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L "),
     [],
@@ -574,6 +631,23 @@ function NavigationMap({
           <circle cx={DOCK[0]} cy={DOCK[1]} r="3" fill="white" />
         </g>
 
+        {/* Packing station final destination pin */}
+        {showOpt && (
+          <g>
+            {phase === "live" && visitedCount >= PICK_STOPS.length && (
+              <circle cx={PACKING_POINT[0]} cy={PACKING_POINT[1]} r="18" fill="none" stroke="oklch(0.55 0.2 25)" strokeWidth="2" opacity="0.7">
+                <animate attributeName="r" values="10;26;10" dur="1.6s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.9;0;0.9" dur="1.6s" repeatCount="indefinite" />
+              </circle>
+            )}
+            <g transform={`translate(${PACKING_POINT[0]} ${PACKING_POINT[1] - 6})`}>
+              <path d="M -8 6 L 0 -10 L 8 6 Z" fill="oklch(0.55 0.2 25)" stroke="white" strokeWidth="1.5" />
+              <circle cx="0" cy="6" r="2" fill="oklch(0.55 0.2 25)" />
+            </g>
+          </g>
+        )}
+
+
         {/* Worker (Tesla-blue) */}
         {(phase === "live" || phase === "complete") && showOpt && (
           <g transform={`translate(${worker[0]} ${worker[1]})`}>
@@ -650,21 +724,149 @@ function ScanOverlay({ msgIdx }: { msgIdx: number }) {
   );
 }
 
-function DestinationToast({ stop }: { stop: PickStop }) {
+/**
+ * Google Maps-style turn-by-turn navigation card.
+ * Shows the next stop with prominent distance + action, followed by the two
+ * upcoming stops in a compact "Then" list. Continues updating past the final
+ * pick to guide the worker into the packing station.
+ */
+function TurnByTurnCard({
+  phase,
+  progress,
+  visitedCount,
+  totalM,
+  walkSpeed,
+}: {
+  phase: NavPhase;
+  progress: number;
+  visitedCount: number;
+  totalM: number;
+  walkSpeed: number;
+}) {
+  // Build upcoming waypoint list: remaining picks + packing at end.
+  const upcoming: Array<{
+    kind: "pick" | "packing";
+    label: string;
+    sub: string;
+    fraction: number;
+  }> = [];
+  for (let i = visitedCount; i < PICK_STOPS.length; i++) {
+    const s = PICK_STOPS[i];
+    upcoming.push({
+      kind: "pick",
+      label: `Shelf ${s.bin}`,
+      sub: `Pick ${s.qty}× ${s.sku}`,
+      fraction: PICK_FRACTIONS[i],
+    });
+  }
+  upcoming.push({
+    kind: "packing",
+    label: "Packing station",
+    sub: "Drop off wave",
+    fraction: PACKING_FRACTION,
+  });
+
+  const speed = Math.max(walkSpeed, 0.9); // avoid div-by-zero for ETA maths
+  const distTo = (frac: number) => Math.max(0, Math.round((frac - progress) * totalM));
+  const etaTo = (m: number) => Math.max(0, Math.round(m / speed));
+
+  const first = upcoming[0];
+  const rest = upcoming.slice(1, 3);
+  const done = phase === "complete";
+
   return (
-    <div className="pointer-events-none absolute right-3 top-3 z-20 flex w-[220px] items-center gap-2.5 rounded-xl border border-border bg-white/95 px-3 py-2 shadow-lg backdrop-blur animate-fade-in">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-          <path d="M12 2C7.6 2 4 5.6 4 10c0 5.6 8 12 8 12s8-6.4 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
-        </svg>
-      </div>
-      <div className="min-w-0">
-        <div className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Next destination</div>
-        <div className="truncate font-mono text-[12px] font-semibold text-foreground">{stop.bin} · {stop.sku}</div>
+    <div className="pointer-events-none absolute left-3 top-3 z-20 w-[260px] animate-fade-in">
+      <div className="rounded-2xl border border-white/10 bg-[oklch(0.16_0.04_260)]/95 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+        {/* Header pill */}
+        <div className="flex items-center gap-2 border-b border-white/10 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${done ? "bg-emerald-400" : "animate-pulse bg-emerald-400"}`} />
+          {done ? "Arrived · Packing" : "Next stop"}
+        </div>
+
+        {/* Primary directive */}
+        <div className="px-3.5 py-3 text-white">
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                first.kind === "packing" ? "bg-orange-500/20 ring-1 ring-orange-400/40" : "bg-blue-500/20 ring-1 ring-blue-400/40"
+              }`}
+            >
+              {first.kind === "packing" ? (
+                <svg viewBox="0 0 24 24" className="h-5 w-5 text-orange-300" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 7l9-4 9 4v10l-9 4-9-4V7z" />
+                  <path d="M3 7l9 4 9-4M12 11v10" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5 text-blue-300" fill="currentColor">
+                  <path d="M12 2C7.6 2 4 5.6 4 10c0 5.6 8 12 8 12s8-6.4 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
+                </svg>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-display text-[17px] leading-tight text-white">
+                {first.label}
+              </div>
+              <div className="mt-0.5 truncate text-[11.5px] text-white/60">
+                {first.sub}
+              </div>
+              <div className="mt-2 flex items-baseline gap-2 font-mono">
+                <span className="text-[22px] font-semibold tabular-nums text-emerald-300">
+                  {distTo(first.fraction)}
+                </span>
+                <span className="text-[11px] text-white/50">m</span>
+                <span className="ml-1 text-[11px] text-white/40">
+                  · {etaTo(distTo(first.fraction))}s
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Then list */}
+        {rest.length > 0 && (
+          <div className="border-t border-white/10 px-3.5 py-2.5">
+            <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-white/40">Then</div>
+            <ul className="space-y-1.5">
+              {rest.map((u, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-[11.5px]">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={`inline-block h-1.5 w-1.5 rounded-full ${
+                        u.kind === "packing" ? "bg-orange-400" : "bg-blue-400"
+                      }`}
+                    />
+                    <span className="truncate text-white/80">{u.label}</span>
+                  </div>
+                  <span className="font-mono text-[11px] text-white/50">{distTo(u.fraction)} m</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+/**
+ * Brief "Picked X" flash when the worker completes a pick.
+ */
+function PickedFlash({ stop }: { stop: PickStop }) {
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 animate-fade-in">
+      <div className="flex items-center gap-2.5 rounded-full border border-emerald-300 bg-white px-3 py-1.5 shadow-lg">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
+          <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M5 12l5 5 9-11" /></svg>
+        </span>
+        <span className="text-[11px] font-semibold text-emerald-800">
+          Picked {stop.qty}× {stop.sku}
+        </span>
+        <span className="font-mono text-[10px] text-emerald-600">· {stop.bin}</span>
+      </div>
+    </div>
+  );
+}
+
 
 function ArrivalToast() {
   return (
@@ -715,12 +917,13 @@ function BeforeAfterStrip({ progress }: { progress: number }) {
 
 function LiveNavigationPanel({
   phase,
-  currentStop,
+  currentStop: _currentStop,
   nextStop,
   remainingKm,
   remainingSec,
   remainingPicks,
   efficiency,
+  walkSpeed,
   progress,
   visitedCount,
   totalStops,
@@ -732,10 +935,12 @@ function LiveNavigationPanel({
   remainingSec: number;
   remainingPicks: number;
   efficiency: number;
+  walkSpeed: number;
   progress: number;
   visitedCount: number;
   totalStops: number;
 }) {
+
   const eta = new Date(Date.now() + remainingSec * 1000);
   const etaStr = eta.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const idle = phase === "idle";
@@ -758,15 +963,16 @@ function LiveNavigationPanel({
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[11px] text-white/60">
-              {idle ? "No active route" : phase === "complete" ? "Return to dock" : `Step ${Math.min(visitedCount + 1, totalStops)} of ${totalStops}`}
+              {idle ? "No active route" : phase === "complete" ? "Arrived at packing" : remainingPicks === 0 ? "Final leg" : `Step ${Math.min(visitedCount + 1, totalStops)} of ${totalStops}`}
             </div>
             <div className="mt-0.5 truncate font-display text-[20px] leading-tight">
-              {idle ? "Ready to plan" : phase === "complete" ? "Delivery complete" : `Head to ${nextStop.bin}`}
+              {idle ? "Ready to plan" : phase === "complete" ? "Packing station" : remainingPicks === 0 ? "Head to Packing" : `Head to ${nextStop.bin}`}
             </div>
             <div className="mt-0.5 font-mono text-[11px] text-white/60">
-              {idle ? "Click Optimize with AI to begin" : `Pick ${nextStop.qty}× ${nextStop.sku} · Order ${nextStop.order}`}
+              {idle ? "Click Optimize with AI to begin" : remainingPicks === 0 ? "Drop off wave · 74 orders" : `Pick ${nextStop.qty}× ${nextStop.sku} · Order ${nextStop.order}`}
             </div>
           </div>
+
         </div>
 
         {/* progress bar */}
@@ -784,13 +990,16 @@ function LiveNavigationPanel({
         </div>
       </div>
 
-      {/* Live metrics grid */}
-      <div className="grid grid-cols-2 gap-px bg-border">
-        <NavMetric label="Remaining distance" value={idle ? "—" : `${remainingKm.toFixed(1)} km`} tone="default" />
-        <NavMetric label="Time to complete" value={idle ? "—" : `${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s`} tone="default" />
-        <NavMetric label="Remaining picks" value={idle ? "—" : `${remainingPicks} / ${totalStops}`} tone="default" />
+      {/* Live metrics grid — 3×2 */}
+      <div className="grid grid-cols-3 gap-px bg-border">
+        <NavMetric label="Remaining" value={idle ? "—" : `${remainingKm.toFixed(1)} km`} tone="default" />
+        <NavMetric label="ETA" value={idle ? "—" : `${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s`} tone="default" />
+        <NavMetric label="Stops" value={idle ? "—" : `${remainingPicks} / ${totalStops}`} tone="default" />
+        <NavMetric label="Speed" value={idle ? "—" : `${walkSpeed.toFixed(2)} m/s`} tone="default" />
+        <NavMetric label="Current pick" value={idle || remainingPicks === 0 ? "—" : nextStop.sku} tone="default" />
         <NavMetric label="Efficiency" value={idle ? "—" : `${Math.round(efficiency)}%`} tone="emerald" />
       </div>
+
 
       {/* Upcoming stops list */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
