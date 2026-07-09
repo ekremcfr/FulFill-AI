@@ -322,7 +322,7 @@ Return the full 4-section detailed explanation.`;
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
           {msgs.map((m) => (
-            <MessageBubble key={m.id} msg={m} onApply={() => apply(m.id)} />
+            <MessageBubble key={m.id} msg={m} onApply={() => apply(m.id)} onExplain={() => explainDetail(m.id)} />
           ))}
           {typing && <TypingBubble />}
         </div>
