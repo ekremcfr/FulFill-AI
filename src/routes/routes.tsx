@@ -778,8 +778,8 @@ function TurnByTurnCard({
   const rest = upcoming.slice(1, 3);
   const done = phase === "complete";
 
-  const [dismissed, setDismissed] = React.useState(false);
-  React.useEffect(() => {
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
     if (phase === "live") setDismissed(false);
   }, [phase]);
   if (dismissed) return null;
