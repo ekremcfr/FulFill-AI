@@ -38,11 +38,13 @@ export function LiveInsightsFeed() {
     return () => clearInterval(t);
   }, [pool]);
 
-  // Optimization run → immediately prepend three new AI insights
+  // Optimization run → generate fresh AI insights and animate them in one-by-one
   useEffect(() => {
     return onOptimizationComplete(() => {
       const now = Date.now();
       const seed = Math.random().toString(36).slice(2, 6);
+      // small run-to-run variance so the feed feels alive
+      const jitter = () => 0.85 + Math.random() * 0.3;
       const fresh: LiveInsight[] = [
         {
           id: `opt-congestion-${seed}`,
@@ -53,8 +55,10 @@ export function LiveInsightsFeed() {
           summary:
             "Rerouted 3 pickers away from Aisles J–K bottleneck; average dwell time back to shift baseline.",
           businessImpact: "Zone C pick rate recovered to +6% above baseline.",
-          estimatedSavings: "$860 / day",
-          confidence: 0.93,
+          estimatedSavings: `$${Math.round(860 * jitter())} / day`,
+          confidence: Math.min(0.98, 0.9 + Math.random() * 0.06),
+          recommendation:
+            "Lock the new J→L reroute for the rest of the shift and monitor dwell every 15 min.",
         },
         {
           id: `opt-batching-${seed}`,
@@ -65,8 +69,10 @@ export function LiveInsightsFeed() {
           summary:
             "74 Wave-3 orders share tight SKU affinity across Zones A/B — batch-pick recommended over discrete.",
           businessImpact: "+31% throughput on Wave 3, −18 min completion time.",
-          estimatedSavings: "$2,140 / week",
-          confidence: 0.9,
+          estimatedSavings: `$${(2.14 * jitter()).toFixed(2)}K / week`,
+          confidence: Math.min(0.97, 0.86 + Math.random() * 0.08),
+          recommendation:
+            "Convert Wave 3 to 8-order batch cartons; route to sort-to-light at Pack Station 2.",
         },
         {
           id: `opt-slot-${seed}`,
@@ -77,13 +83,20 @@ export function LiveInsightsFeed() {
           summary:
             "High-velocity SKU-145 moved from Zone C to Shelf A03 (Zone A) — closer to packing station.",
           businessImpact: "Eliminates ≈420 m/day of picker travel.",
-          estimatedSavings: "$1,820 / month",
-          confidence: 0.94,
+          estimatedSavings: `$${Math.round(1820 * jitter())} / month`,
+          confidence: Math.min(0.98, 0.9 + Math.random() * 0.07),
+          recommendation:
+            "Approve reslot in WMS and update pick-face labels during next replen window.",
         },
       ];
-      setVisible((prev) => [...fresh, ...prev].slice(0, MAX_VISIBLE));
-      setPulseId(fresh[0].id);
-      setTimeout(() => setPulseId(null), 2200);
+      // Stagger the drops so the feed feels alive
+      fresh.forEach((insight, i) => {
+        setTimeout(() => {
+          setVisible((prev) => [insight, ...prev].slice(0, MAX_VISIBLE));
+          setPulseId(insight.id);
+          setTimeout(() => setPulseId((p) => (p === insight.id ? null : p)), 1800);
+        }, i * 750);
+      });
     });
   }, []);
 
