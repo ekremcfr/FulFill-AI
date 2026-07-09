@@ -317,10 +317,12 @@ function SmartPickingPage() {
               remainingSec={remainingSec}
               remainingPicks={remainingPicks}
               efficiency={efficiency}
+              walkSpeed={walkSpeed}
               progress={progress}
               visitedCount={visitedCount}
               totalStops={PICK_STOPS.length}
             />
+
             <AiNarrationCard
               phase={phase}
               rationale={rationale}
