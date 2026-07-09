@@ -17,12 +17,45 @@ interface Suggestion {
   improvement: string;
 }
 
+interface ConciseCard {
+  summary: string;
+  businessImpact: string;
+  recommendation: string;
+  confidence: number; // 0..1
+}
+
 interface Msg {
   id: string;
   role: "user" | "ai";
   text: string;
+  card?: ConciseCard;
+  detailed?: string;
+  loadingDetailed?: boolean;
   suggestion?: Suggestion;
   applied?: boolean;
+}
+
+function parseCard(raw: string): ConciseCard | null {
+  const trimmed = raw.trim().replace(/^```json\s*|\s*```$/g, "");
+  try {
+    const j = JSON.parse(trimmed);
+    if (
+      typeof j?.summary === "string" &&
+      typeof j?.businessImpact === "string" &&
+      typeof j?.recommendation === "string"
+    ) {
+      const c = typeof j.confidence === "number" ? j.confidence : 0.85;
+      return {
+        summary: j.summary,
+        businessImpact: j.businessImpact,
+        recommendation: j.recommendation,
+        confidence: Math.max(0, Math.min(1, c)),
+      };
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
 }
 
 
@@ -86,18 +119,20 @@ Newly generated AI insights:
 2. Batch picking opportunity detected — 74 Wave-3 orders share SKU affinity across Zones A/B.
 3. SKU-145 relocated to Shelf A03 — high-velocity SKU moved closer to packing.
 
-Write a concise executive summary for the ops director in the required 4-section format (Summary / Reasoning / Business Impact / Recommendation). Keep it decisive and business-focused.`;
+Write a decisive executive summary for the ops director. Keep it concise.`;
           const result = await ask({
             data: {
               messages: [{ role: "user", text: prompt }],
               contextText,
+              mode: "concise",
             },
           });
           setTyping(false);
           if (result.ok) {
+            const card = parseCard(result.text);
             setMsgs((m) => [
               ...m,
-              { id: `a-opt-${Date.now()}`, role: "ai", text: result.text },
+              { id: `a-opt-${Date.now()}`, role: "ai", text: card ? "" : result.text, card: card ?? undefined },
             ]);
           } else {
             setMsgs((m) => [
@@ -139,13 +174,15 @@ Write a concise executive summary for the ops director in the required 4-section
             .filter((m) => m.id !== "greet")
             .map((m) => ({ role: m.role, text: m.text })),
           contextText,
+          mode: "concise",
         },
       });
       setTyping(false);
       if (result.ok) {
+        const card = parseCard(result.text);
         setMsgs((m) => [
           ...m,
-          { id: `a-${Date.now()}`, role: "ai", text: result.text },
+          { id: `a-${Date.now()}`, role: "ai", text: card ? "" : result.text, card: card ?? undefined },
         ]);
       } else {
         console.error("[copilot] gemini request failed", result);
@@ -194,6 +231,43 @@ Write a concise executive summary for the ops director in the required 4-section
         },
       ]);
     }, 500);
+  };
+
+  const explainDetail = async (id: string) => {
+    const target = msgs.find((x) => x.id === id);
+    if (!target?.card || target.detailed || target.loadingDetailed) return;
+    setMsgs((m) => m.map((x) => (x.id === id ? { ...x, loadingDetailed: true } : x)));
+    try {
+      const contextText = formatContextForPrompt(buildCopilotContext());
+      const prompt = `Expand the following FulfillAI concise recommendation into a full detailed operational analysis.
+
+Concise:
+- Summary: ${target.card.summary}
+- Business Impact: ${target.card.businessImpact}
+- Recommendation: ${target.card.recommendation}
+- Confidence: ${Math.round(target.card.confidence * 100)}%
+
+Return the full 4-section detailed explanation.`;
+      const result = await ask({
+        data: {
+          messages: [{ role: "user", text: prompt }],
+          contextText,
+          mode: "detailed",
+        },
+      });
+      setMsgs((m) =>
+        m.map((x) =>
+          x.id === id
+            ? { ...x, loadingDetailed: false, detailed: result.ok ? result.text : `Couldn't load detailed analysis: ${result.error}` }
+            : x,
+        ),
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setMsgs((m) =>
+        m.map((x) => (x.id === id ? { ...x, loadingDetailed: false, detailed: `Failed: ${message}` } : x)),
+      );
+    }
   };
 
   return (
@@ -248,7 +322,7 @@ Write a concise executive summary for the ops director in the required 4-section
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
           {msgs.map((m) => (
-            <MessageBubble key={m.id} msg={m} onApply={() => apply(m.id)} />
+            <MessageBubble key={m.id} msg={m} onApply={() => apply(m.id)} onExplain={() => explainDetail(m.id)} />
           ))}
           {typing && <TypingBubble />}
         </div>
@@ -305,7 +379,7 @@ Write a concise executive summary for the ops director in the required 4-section
   );
 }
 
-function MessageBubble({ msg, onApply }: { msg: Msg; onApply: () => void }) {
+function MessageBubble({ msg, onApply, onExplain }: { msg: Msg; onApply: () => void; onExplain: () => void }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">
@@ -316,16 +390,22 @@ function MessageBubble({ msg, onApply }: { msg: Msg; onApply: () => void }) {
     );
   }
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 animate-fade-in">
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 ring-1 ring-emerald-400/30">
         <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-300" fill="currentColor">
           <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
         </svg>
       </div>
       <div className="min-w-0 flex-1 space-y-2">
-        <div className="whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-white/[0.06] px-3.5 py-2 text-[13px] leading-relaxed text-white/90">
-          {msg.text}
-        </div>
+        {msg.card ? (
+          <ConciseCardView card={msg.card} detailed={msg.detailed} loading={msg.loadingDetailed} onExplain={onExplain} />
+        ) : (
+          msg.text && (
+            <div className="whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-white/[0.06] px-3.5 py-2 text-[13px] leading-relaxed text-white/90">
+              {msg.text}
+            </div>
+          )
+        )}
         {msg.suggestion && (
           <div className="overflow-hidden rounded-xl border border-emerald-400/25 bg-emerald-500/[0.06]">
             <div className="px-3.5 py-2.5">
@@ -362,6 +442,141 @@ function MessageBubble({ msg, onApply }: { msg: Msg; onApply: () => void }) {
         )}
       </div>
     </div>
+  );
+}
+
+function ConciseCardView({
+  card,
+  detailed,
+  loading,
+  onExplain,
+}: {
+  card: ConciseCard;
+  detailed?: string;
+  loading?: boolean;
+  onExplain: () => void;
+}) {
+  const pct = Math.round(card.confidence * 100);
+  const barTone = pct >= 90 ? "bg-emerald-400" : pct >= 75 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-400" : "bg-red-400";
+  return (
+    <div className="space-y-2">
+      <MiniCard tone="summary" icon={<WarehouseIcon />} label="Summary" value={card.summary} />
+      <MiniCard tone="impact" icon={<TrendIcon />} label="Business Impact" value={card.businessImpact} />
+      <MiniCard tone="rec" icon={<TargetIcon />} label="Recommendation" value={card.recommendation} />
+
+      <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+          <span className="flex items-center gap-1.5">
+            <ShieldIcon /> Confidence
+          </span>
+          <span className="font-mono text-emerald-300">{pct}%</span>
+        </div>
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className={`h-full rounded-full ${barTone} transition-all duration-700`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      {!detailed && (
+        <button
+          onClick={onExplain}
+          disabled={loading}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-500/10 py-2 text-[12px] font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-60"
+        >
+          {loading ? (
+            <>
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-300" style={{ animationDelay: "0ms" }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-300" style={{ animationDelay: "120ms" }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-300" style={{ animationDelay: "240ms" }} />
+              <span className="ml-1">Generating detailed analysis…</span>
+            </>
+          ) : (
+            <>
+              <BookIcon />
+              Explain in Detail
+            </>
+          )}
+        </button>
+      )}
+
+      {detailed && (
+        <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/[0.04] px-3.5 py-2.5 animate-fade-in">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+            Detailed analysis
+          </div>
+          <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-white/85">{detailed}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniCard({
+  tone,
+  icon,
+  label,
+  value,
+}: {
+  tone: "summary" | "impact" | "rec";
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  const styles = {
+    summary: { ring: "border-white/10 bg-white/[0.05]", chip: "bg-white/10 text-white/80" },
+    impact: { ring: "border-emerald-400/25 bg-emerald-500/[0.07]", chip: "bg-emerald-500/20 text-emerald-200" },
+    rec: { ring: "border-amber-400/25 bg-amber-500/[0.07]", chip: "bg-amber-500/20 text-amber-200" },
+  }[tone];
+  return (
+    <div className={`rounded-xl border ${styles.ring} px-3 py-2.5`}>
+      <div className="flex items-center gap-1.5">
+        <span className={`flex h-5 w-5 items-center justify-center rounded-md ${styles.chip}`}>{icon}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">{label}</span>
+      </div>
+      <p className="mt-1 text-[13px] leading-snug text-white/90">{value}</p>
+    </div>
+  );
+}
+
+/* Warehouse-flavored inline icons (kept local to avoid extra deps) */
+function WarehouseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 21V9l9-5 9 5v12" />
+      <path d="M7 21v-6h10v6" />
+      <path d="M9 15h6" />
+    </svg>
+  );
+}
+function TrendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2">
+      <path d="M3 17l6-6 4 4 7-8" />
+      <path d="M14 7h6v6" />
+    </svg>
+  );
+}
+function TargetIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+function ShieldIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z" />
+    </svg>
+  );
+}
+function BookIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z" />
+      <path d="M8 7h8M8 11h8M8 15h5" />
+    </svg>
   );
 }
 

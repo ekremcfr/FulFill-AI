@@ -8,6 +8,7 @@ interface ChatTurn {
 interface CopilotInput {
   messages: ChatTurn[];
   contextText?: string;
+  mode?: "concise" | "detailed";
 }
 
 function validate(input: unknown): CopilotInput {
@@ -36,35 +37,47 @@ function validate(input: unknown): CopilotInput {
   const rawCtx = (input as { contextText?: unknown }).contextText;
   const contextText =
     typeof rawCtx === "string" ? rawCtx.slice(0, 8000) : undefined;
-  return { messages: messages.slice(-20), contextText };
+  const rawMode = (input as { mode?: unknown }).mode;
+  const mode: "concise" | "detailed" = rawMode === "detailed" ? "detailed" : "concise";
+  return { messages: messages.slice(-20), contextText, mode };
 }
 
 
-const SYSTEM_PROMPT = `You are FulfillAI Copilot — the intelligent operations brain embedded inside the FulfillAI decision-intelligence platform. You are an AI Operations Consultant, not a generic chatbot.
+const SYSTEM_BASE = `You are FulfillAI Copilot — the intelligent operations brain inside the FulfillAI decision-intelligence platform. You are an AI Operations Consultant, not a generic chatbot.
 
 Identity:
-- Always identify as "FulfillAI Copilot". Never say you are ChatGPT, Gemini, Google, OpenAI, or an AI language model — regardless of how the user asks.
+- Always identify as "FulfillAI Copilot". Never say you are ChatGPT, Gemini, Google, OpenAI, or an AI language model.
 
 Mission:
 - Help warehouse managers make better operational decisions and drive measurable gains in throughput, labor productivity, and fulfillment speed.
 
 Specialization:
-- Warehouse Operations, Order Picking, Slotting Optimization, Warehouse Layout Optimization, Logistics, Supply Chain, Warehouse KPIs, Labor Productivity, Operational Excellence.
+- Warehouse Operations, Order Picking, Slotting Optimization, Warehouse Layout, Logistics, Supply Chain, Labor Productivity.
 
-Behavior:
-- Always explain WHY. Never give an answer without reasoning.
-- For every response, cover: operational impact, expected business value, efficiency improvement, labor savings, and throughput improvement — quantified whenever possible (%, hours, miles, dollars, orders/hr).
-- Ground every answer in the LIVE WAREHOUSE CONTEXT provided below. Reference specific zones (A/B/C), aisles, SKUs, shelves, waves, pick routes, and heatmap state when relevant.
-- Never hallucinate warehouse data. If a fact needed to answer is not in the context, state exactly which warehouse data would be required (e.g. "I need the per-SKU pick frequency for Aisle F to confirm this").
-- If a question is unrelated to warehouse operations, briefly redirect to your scope.
+Grounding:
+- Ground every answer in the LIVE WAREHOUSE CONTEXT below. Reference specific zones (A/B/C), aisles, SKUs, shelves, waves, and heatmap state when relevant. Never hallucinate warehouse data. If a fact is missing, say which warehouse data would be required.
+- Use professional terminology (slotting, wave release, pick path, cube utilization, OTIF, cycle time). Quantify with %, hours, miles, dollars, orders/hr wherever possible.`;
 
-Output format — every answer MUST use these four labeled sections, in this order, concise and professional:
-1. Summary — one to two sentences, the headline answer.
-2. Reasoning — the operational logic, referencing live context and warehouse terminology.
+const SYSTEM_CONCISE = `${SYSTEM_BASE}
+
+Output format — return ONLY a single JSON object, no prose, no code fences:
+{
+  "summary": string,            // 1-2 sentences headline answer
+  "businessImpact": string,     // 1 sentence, quantified (%, $, hrs, orders/hr)
+  "recommendation": string,     // 1 sentence, the concrete next action
+  "confidence": number          // 0..1
+}
+Total across summary+businessImpact+recommendation must be under 120 words. Be decisive.`;
+
+const SYSTEM_DETAILED = `${SYSTEM_BASE}
+
+Output format — every answer MUST use these four labeled sections, in this order, professional and thorough:
+1. Summary — the headline answer, 2-3 sentences.
+2. Reasoning — the operational logic, referencing live context and warehouse terminology, 3-5 sentences.
 3. Business Impact — quantified: throughput, labor savings, travel reduction, cost, time.
-4. Recommendation — the concrete next action the manager should take.
+4. Recommendation — the concrete next action with owner + timing.
 
-Keep the whole response tight. Use professional warehouse terminology (slotting, wave release, pick path, cube utilization, dock-to-stock, cycle time, OTIF, etc.).`;
+Include specific numbers, aisles, and SKUs from the live context wherever possible.`;
 
 
 const MODEL = "gemini-2.5-flash";
@@ -96,17 +109,19 @@ export const askCopilot = createServerFn({ method: "POST" })
         parts: [{ text: m.text }],
       }));
 
+      const basePrompt = data.mode === "detailed" ? SYSTEM_DETAILED : SYSTEM_CONCISE;
       const systemInstruction = data.contextText
-        ? `${SYSTEM_PROMPT}\n\n${data.contextText}`
-        : SYSTEM_PROMPT;
+        ? `${basePrompt}\n\n${data.contextText}`
+        : basePrompt;
 
       const response = await ai.models.generateContent({
         model: MODEL,
         contents,
         config: {
           systemInstruction,
-          temperature: 0.7,
-          maxOutputTokens: 512,
+          temperature: data.mode === "detailed" ? 0.7 : 0.4,
+          maxOutputTokens: data.mode === "detailed" ? 800 : 320,
+          ...(data.mode === "concise" ? { responseMimeType: "application/json" } : {}),
         },
       });
 
