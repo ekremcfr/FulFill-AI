@@ -94,16 +94,19 @@ const PACKING_POINT: [number, number] = [1105, 130];
 // packing station. Strips the last two "return to dock" points from
 // OPTIMIZED_ROUTE and appends a clean corridor + packing approach.
 const NAV_ROUTE: Array<[number, number]> = (() => {
-  const lastPick = OPTIMIZED_ROUTE[11]; // [816, 320] · aisle H, last pick
-  const trimmed = OPTIMIZED_ROUTE.slice(0, 12) as Array<[number, number]>;
+  // Keep dock start + all interior waypoints up to and including the last pick
+  // (aisle H at index 11). Then append a corridor path to packing.
+  const trimmed = OPTIMIZED_ROUTE.slice(0, 12).map(
+    ([x, y]) => [x, y] as [number, number],
+  );
   return [
     ...trimmed,
-    [816, 130] as [number, number],  // up to top corridor
-    [1050, 130] as [number, number], // over to packing
-    PACKING_POINT,                    // arrive
-    // touch lastPick just to silence "unused" without keeping it in path
-  ].filter((p) => p !== lastPick);
+    [816, 130], // up to top corridor
+    [1050, 130], // over to packing
+    PACKING_POINT, // arrive
+  ];
 })();
+
 
 // Pre-computed segment lengths for the nav route → used to place the worker
 // at any progress fraction 0..1.
