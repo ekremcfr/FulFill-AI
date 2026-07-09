@@ -86,16 +86,35 @@ const SCAN_MESSAGES = [
   "Optimization complete.",
 ];
 
-// Pre-computed segment lengths for the optimized route → used to place the
-// worker at any progress fraction 0..1.
+// Extend the route: after the final pick, worker heads to the PACKING station
+// (not back to the dock). This is the last leg of the journey.
+const PACKING_POINT: [number, number] = [1105, 130];
+
+// Full navigation route: dock start → picks (via OPTIMIZED_ROUTE interior) →
+// packing station. Strips the last two "return to dock" points from
+// OPTIMIZED_ROUTE and appends a clean corridor + packing approach.
+const NAV_ROUTE: Array<[number, number]> = (() => {
+  const lastPick = OPTIMIZED_ROUTE[11]; // [816, 320] · aisle H, last pick
+  const trimmed = OPTIMIZED_ROUTE.slice(0, 12) as Array<[number, number]>;
+  return [
+    ...trimmed,
+    [816, 130] as [number, number],  // up to top corridor
+    [1050, 130] as [number, number], // over to packing
+    PACKING_POINT,                    // arrive
+    // touch lastPick just to silence "unused" without keeping it in path
+  ].filter((p) => p !== lastPick);
+})();
+
+// Pre-computed segment lengths for the nav route → used to place the worker
+// at any progress fraction 0..1.
 const OPT_SEGMENTS = (() => {
   const segs: { len: number; from: [number, number]; to: [number, number] }[] = [];
-  for (let i = 0; i < OPTIMIZED_ROUTE.length - 1; i++) {
-    const a = OPTIMIZED_ROUTE[i];
-    const b = OPTIMIZED_ROUTE[i + 1];
+  for (let i = 0; i < NAV_ROUTE.length - 1; i++) {
+    const a = NAV_ROUTE[i];
+    const b = NAV_ROUTE[i + 1];
     segs.push({
-      from: a as [number, number],
-      to: b as [number, number],
+      from: a,
+      to: b,
       len: Math.hypot(b[0] - a[0], b[1] - a[1]),
     });
   }
@@ -114,7 +133,7 @@ function pointAt(fraction: number): [number, number] {
     }
     acc += s.len;
   }
-  return OPTIMIZED_ROUTE[OPTIMIZED_ROUTE.length - 1] as [number, number];
+  return NAV_ROUTE[NAV_ROUTE.length - 1];
 }
 
 // Fraction along the total route at which each pick stop sits.
@@ -130,6 +149,10 @@ const PICK_FRACTIONS = (() => {
     return 0;
   });
 })();
+
+// Packing station is the final destination (progress = 1.0).
+const PACKING_FRACTION = 1.0;
+
 
 const LIVE_DURATION_MS = 32000; // ~32s live picker traversal
 
