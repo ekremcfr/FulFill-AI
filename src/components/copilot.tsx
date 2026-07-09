@@ -119,18 +119,20 @@ Newly generated AI insights:
 2. Batch picking opportunity detected — 74 Wave-3 orders share SKU affinity across Zones A/B.
 3. SKU-145 relocated to Shelf A03 — high-velocity SKU moved closer to packing.
 
-Write a concise executive summary for the ops director in the required 4-section format (Summary / Reasoning / Business Impact / Recommendation). Keep it decisive and business-focused.`;
+Write a decisive executive summary for the ops director. Keep it concise.`;
           const result = await ask({
             data: {
               messages: [{ role: "user", text: prompt }],
               contextText,
+              mode: "concise",
             },
           });
           setTyping(false);
           if (result.ok) {
+            const card = parseCard(result.text);
             setMsgs((m) => [
               ...m,
-              { id: `a-opt-${Date.now()}`, role: "ai", text: result.text },
+              { id: `a-opt-${Date.now()}`, role: "ai", text: card ? "" : result.text, card: card ?? undefined },
             ]);
           } else {
             setMsgs((m) => [
