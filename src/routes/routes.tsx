@@ -601,6 +601,23 @@ function NavigationMap({
           <circle cx={DOCK[0]} cy={DOCK[1]} r="3" fill="white" />
         </g>
 
+        {/* Packing station final destination pin */}
+        {showOpt && (
+          <g>
+            {phase === "live" && visitedCount >= PICK_STOPS.length && (
+              <circle cx={PACKING_POINT[0]} cy={PACKING_POINT[1]} r="18" fill="none" stroke="oklch(0.55 0.2 25)" strokeWidth="2" opacity="0.7">
+                <animate attributeName="r" values="10;26;10" dur="1.6s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.9;0;0.9" dur="1.6s" repeatCount="indefinite" />
+              </circle>
+            )}
+            <g transform={`translate(${PACKING_POINT[0]} ${PACKING_POINT[1] - 6})`}>
+              <path d="M -8 6 L 0 -10 L 8 6 Z" fill="oklch(0.55 0.2 25)" stroke="white" strokeWidth="1.5" />
+              <circle cx="0" cy="6" r="2" fill="oklch(0.55 0.2 25)" />
+            </g>
+          </g>
+        )}
+
+
         {/* Worker (Tesla-blue) */}
         {(phase === "live" || phase === "complete") && showOpt && (
           <g transform={`translate(${worker[0]} ${worker[1]})`}>
