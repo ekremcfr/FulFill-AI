@@ -13,6 +13,7 @@ import { ProactiveInsightPanel } from "@/components/proactive-insight-panel";
 import type { MapSelection } from "@/lib/map-selection";
 import { PICK_TASKS } from "@/lib/warehouse-data";
 import { emitOptimizationComplete } from "@/lib/optimization-events";
+import { PresentationMode } from "@/components/presentation-mode";
 
 
 
