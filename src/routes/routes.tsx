@@ -861,13 +861,16 @@ function LiveNavigationPanel({
         </div>
       </div>
 
-      {/* Live metrics grid */}
-      <div className="grid grid-cols-2 gap-px bg-border">
-        <NavMetric label="Remaining distance" value={idle ? "—" : `${remainingKm.toFixed(1)} km`} tone="default" />
-        <NavMetric label="Time to complete" value={idle ? "—" : `${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s`} tone="default" />
-        <NavMetric label="Remaining picks" value={idle ? "—" : `${remainingPicks} / ${totalStops}`} tone="default" />
+      {/* Live metrics grid — 3×2 */}
+      <div className="grid grid-cols-3 gap-px bg-border">
+        <NavMetric label="Remaining" value={idle ? "—" : `${remainingKm.toFixed(1)} km`} tone="default" />
+        <NavMetric label="ETA" value={idle ? "—" : `${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s`} tone="default" />
+        <NavMetric label="Stops" value={idle ? "—" : `${remainingPicks} / ${totalStops}`} tone="default" />
+        <NavMetric label="Speed" value={idle ? "—" : `${walkSpeed.toFixed(2)} m/s`} tone="default" />
+        <NavMetric label="Current pick" value={idle || remainingPicks === 0 ? "—" : nextStop.sku} tone="default" />
         <NavMetric label="Efficiency" value={idle ? "—" : `${Math.round(efficiency)}%`} tone="emerald" />
       </div>
+
 
       {/* Upcoming stops list */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
