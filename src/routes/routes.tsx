@@ -835,15 +835,16 @@ function LiveNavigationPanel({
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[11px] text-white/60">
-              {idle ? "No active route" : phase === "complete" ? "Return to dock" : `Step ${Math.min(visitedCount + 1, totalStops)} of ${totalStops}`}
+              {idle ? "No active route" : phase === "complete" ? "Arrived at packing" : remainingPicks === 0 ? "Final leg" : `Step ${Math.min(visitedCount + 1, totalStops)} of ${totalStops}`}
             </div>
             <div className="mt-0.5 truncate font-display text-[20px] leading-tight">
-              {idle ? "Ready to plan" : phase === "complete" ? "Delivery complete" : `Head to ${nextStop.bin}`}
+              {idle ? "Ready to plan" : phase === "complete" ? "Packing station" : remainingPicks === 0 ? "Head to Packing" : `Head to ${nextStop.bin}`}
             </div>
             <div className="mt-0.5 font-mono text-[11px] text-white/60">
-              {idle ? "Click Optimize with AI to begin" : `Pick ${nextStop.qty}× ${nextStop.sku} · Order ${nextStop.order}`}
+              {idle ? "Click Optimize with AI to begin" : remainingPicks === 0 ? "Drop off wave · 74 orders" : `Pick ${nextStop.qty}× ${nextStop.sku} · Order ${nextStop.order}`}
             </div>
           </div>
+
         </div>
 
         {/* progress bar */}
