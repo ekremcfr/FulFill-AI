@@ -109,17 +109,19 @@ export const askCopilot = createServerFn({ method: "POST" })
         parts: [{ text: m.text }],
       }));
 
+      const basePrompt = data.mode === "detailed" ? SYSTEM_DETAILED : SYSTEM_CONCISE;
       const systemInstruction = data.contextText
-        ? `${SYSTEM_PROMPT}\n\n${data.contextText}`
-        : SYSTEM_PROMPT;
+        ? `${basePrompt}\n\n${data.contextText}`
+        : basePrompt;
 
       const response = await ai.models.generateContent({
         model: MODEL,
         contents,
         config: {
           systemInstruction,
-          temperature: 0.7,
-          maxOutputTokens: 512,
+          temperature: data.mode === "detailed" ? 0.7 : 0.4,
+          maxOutputTokens: data.mode === "detailed" ? 800 : 320,
+          ...(data.mode === "concise" ? { responseMimeType: "application/json" } : {}),
         },
       });
 
