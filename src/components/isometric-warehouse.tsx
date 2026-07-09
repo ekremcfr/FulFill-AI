@@ -882,28 +882,58 @@ export function IsometricWarehouse({
 
       {/* CAMERA CONTROLS */}
       <div className="absolute right-3 top-3 flex flex-col gap-1.5">
+        {/* Zoom cluster */}
         <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white/95 shadow-lg backdrop-blur">
-          <CtrlBtn onClick={() => setScale((s) => Math.min(2.2, s * 1.15))} title="Zoom in">
+          <CtrlBtn onClick={zoomIn} title="Zoom in">
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
           </CtrlBtn>
           <div className="mx-2 h-px bg-border" />
-          <CtrlBtn onClick={() => setScale((s) => Math.max(0.5, s / 1.15))} title="Zoom out">
+          <CtrlBtn onClick={zoomOut} title="Zoom out">
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14" /></svg>
           </CtrlBtn>
+        </div>
+
+        {/* Fit / Reset cluster */}
+        <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white/95 shadow-lg backdrop-blur">
+          <CtrlBtn onClick={fitView} title="Fit to screen">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" /></svg>
+          </CtrlBtn>
           <div className="mx-2 h-px bg-border" />
-          <CtrlBtn onClick={resetView} title="Reset view">
+          <CtrlBtn onClick={resetView} title="Reset camera">
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></svg>
           </CtrlBtn>
         </div>
 
-        <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white/95 p-2 shadow-lg backdrop-blur">
-          <div className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">Rotate</div>
-          <input
-            type="range" min={-15} max={15} step={1} value={rot}
-            onChange={(e) => setRot(Number(e.target.value))}
-            className="h-1 w-24 cursor-pointer accent-[#183B6B]"
-          />
-          <div className="mt-1 text-center font-mono text-[10px] text-muted-foreground">{rot}°</div>
+        {/* Isometric rotate — snaps to 90° steps */}
+        <div className="flex flex-col items-center overflow-hidden rounded-xl border border-border bg-white/95 p-2 shadow-lg backdrop-blur">
+          <div className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">Orbit</div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => rotateStep(-1)}
+              title="Rotate left 90°"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/70 hover:bg-surface-muted"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 14l-4-4 4-4" /><path d="M5 10h9a5 5 0 0 1 5 5v3" /></svg>
+            </button>
+            <span className="w-10 text-center font-mono text-[11px] font-semibold text-foreground">{rot}°</span>
+            <button
+              onClick={() => rotateStep(1)}
+              title="Rotate right 90°"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/70 hover:bg-surface-muted"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 14l4-4-4-4" /><path d="M19 10h-9a5 5 0 0 0-5 5v3" /></svg>
+            </button>
+          </div>
+          <div className="mt-1.5 flex gap-1">
+            {[0, 90, 180, 270].map((a) => (
+              <button
+                key={a}
+                onClick={() => setRot(a)}
+                className={`h-1.5 w-4 rounded-full transition ${rot === a ? "bg-primary" : "bg-border hover:bg-muted-foreground/40"}`}
+                title={`${a}°`}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
