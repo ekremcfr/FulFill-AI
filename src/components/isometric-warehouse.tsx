@@ -264,6 +264,7 @@ export function IsometricWarehouse({
   const [walkT, setWalkT] = useState(0); // 0..1 worker progress
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [scanned, setScanned] = useState<Set<string>>(new Set());
+  const [dragging, setDragging] = useState(false);
 
   const selectRack = (r: RackData | null) => {
     setSelected(r);
