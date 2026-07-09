@@ -263,7 +263,8 @@ Insight:
 - Summary: ${insight.summary}
 - Business Impact (headline): ${insight.businessImpact}
 - Estimated Savings: ${insight.estimatedSavings}
-- Confidence: ${Math.round(insight.confidence * 100)}%`;
+- Confidence: ${Math.round(insight.confidence * 100)}%
+- Recommendation: ${insight.recommendation}`;
         const res = await ask({
           data: {
             messages: [{ role: "user", text: prompt }],
