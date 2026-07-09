@@ -1,213 +1,707 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { AppShell } from "@/components/app-shell";
-import { WarehouseMap } from "@/components/warehouse-map";
-import { OPTIMIZED_ROUTE, PICK_TASKS } from "@/lib/warehouse-data";
+import {
+  AISLES,
+  OPTIMIZED_ROUTE,
+  NAIVE_ROUTE,
+  PICK_TASKS,
+  WAREHOUSE_HEIGHT,
+  WAREHOUSE_WIDTH,
+  type Zone,
+} from "@/lib/warehouse-data";
 import { askCopilot } from "@/lib/copilot.functions";
 
 export const Route = createFileRoute("/routes")({
   head: () => ({
     meta: [
-      { title: "Smart Picking · FulfillAI" },
+      { title: "Smart Picking · FulfillAI Navigation" },
       {
         name: "description",
         content:
-          "Upload orders, run the FulfillAI optimization engine, and deploy AI-optimized picking routes that cut travel by 30%+.",
+          "Live warehouse navigation for pickers. FulfillAI plans the route, guides every pick, and cuts travel by 30%+.",
       },
     ],
   }),
   component: SmartPickingPage,
 });
 
-type Stage = "upload" | "validated" | "optimizing" | "results";
+/* ================================================================
+ *  Types & derived route data
+ * ================================================================*/
 
-interface OrdersDataset {
-  orders: number;
-  skus: number;
-  lines: number;
-  workloadMin: number;
-  source: "demo" | "csv";
-  fileName?: string;
+type NavPhase = "idle" | "scanning" | "live" | "complete";
+type RouteMode = "current" | "optimized" | "both";
+
+interface PickStop {
+  index: number;             // stop # (1..N)
+  x: number;
+  y: number;
+  aisle: string;
+  bin: string;
+  sku: string;
+  qty: number;
+  order: string;
+  reason: string;            // AI rationale for THIS stop
 }
 
-const DEMO_DATASET: OrdersDataset = {
-  orders: 74,
-  skus: 118,
-  lines: 312,
-  workloadMin: 91,
-  source: "demo",
-};
+const DOCK: [number, number] = OPTIMIZED_ROUTE[0];
 
-const AI_MESSAGES = [
-  "Reading warehouse layout…",
+// Build 8 pick stops out of the interior waypoints of OPTIMIZED_ROUTE.
+// Skip the pure "cross-aisle" hop points so stops feel like real bins.
+const PICK_STOPS: PickStop[] = (() => {
+  const pickIdx = [2, 3, 5, 7, 9, 10, 11]; // indexes into OPTIMIZED_ROUTE
+  const skuPool = [
+    { sku: "SKU-A2B", aisle: "A", bin: "A-B2", qty: 3, order: "SO-88291",
+      reason: "Fast-mover · start of loop to warm up the picker" },
+    { sku: "SKU-B4T", aisle: "B", bin: "B-T4", qty: 2, order: "SO-88291",
+      reason: "Batched with A2B — same order, adjacent aisle" },
+    { sku: "SKU-C5A", aisle: "C", bin: "C-T5", qty: 1, order: "SO-88291",
+      reason: "Grouped nearby picks · avoids backtracking through B" },
+    { sku: "SKU-F1A", aisle: "F", bin: "F-T1", qty: 2, order: "SO-88292",
+      reason: "Aisle F traversed once — avoids 14:00 congestion spike" },
+    { sku: "SKU-K7B", aisle: "K", bin: "K-B7", qty: 5, order: "SO-88292",
+      reason: "High-demand SKU · prioritized before shift refill window" },
+    { sku: "SKU-K3T", aisle: "K", bin: "K-T3", qty: 1, order: "SO-88293",
+      reason: "Stacked with K7B — zero extra travel" },
+    { sku: "SKU-H3A", aisle: "H", bin: "H-T3", qty: 1, order: "SO-88293",
+      reason: "Returns toward dock · minimizes cross-aisle travel" },
+  ];
+  return pickIdx.map((rIdx, i) => ({
+    index: i + 1,
+    x: OPTIMIZED_ROUTE[rIdx][0],
+    y: OPTIMIZED_ROUTE[rIdx][1],
+    ...skuPool[i],
+  }));
+})();
+
+const SCAN_MESSAGES = [
+  "Scanning warehouse…",
   "Loading order history…",
-  "Grouping nearby orders…",
-  "Calculating shortest paths…",
-  "Detecting congestion…",
-  "Building optimal picking route…",
+  "Grouping nearby picks…",
+  "Detecting congestion in Aisle F…",
+  "Calculating shortest path…",
+  "Generating optimal navigation…",
   "Optimization complete.",
 ];
 
-function SmartPickingPage() {
-  const [stage, setStage] = useState<Stage>("upload");
-  const [dataset, setDataset] = useState<OrdersDataset | null>(null);
-  const [aiMsgIndex, setAiMsgIndex] = useState(0);
-  const [aiSummary, setAiSummary] = useState<string>("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const askCopilotFn = useServerFn(askCopilot);
-
-  const handleDemo = () => {
-    setDataset(DEMO_DATASET);
-    setStage("validated");
-  };
-
-  const handleCsv = (file: File) => {
-    // Simulated parse — the demo is deterministic
-    const jitter = (file.size % 20) + 60;
-    setDataset({
-      orders: jitter,
-      skus: Math.round(jitter * 1.5),
-      lines: Math.round(jitter * 4.1),
-      workloadMin: Math.round(jitter * 1.22),
-      source: "csv",
-      fileName: file.name,
+// Pre-computed segment lengths for the optimized route → used to place the
+// worker at any progress fraction 0..1.
+const OPT_SEGMENTS = (() => {
+  const segs: { len: number; from: [number, number]; to: [number, number] }[] = [];
+  for (let i = 0; i < OPTIMIZED_ROUTE.length - 1; i++) {
+    const a = OPTIMIZED_ROUTE[i];
+    const b = OPTIMIZED_ROUTE[i + 1];
+    segs.push({
+      from: a as [number, number],
+      to: b as [number, number],
+      len: Math.hypot(b[0] - a[0], b[1] - a[1]),
     });
-    setStage("validated");
-  };
+  }
+  const total = segs.reduce((s, x) => s + x.len, 0);
+  return { segs, total };
+})();
 
-  const runOptimize = useCallback(async () => {
-    setStage("optimizing");
-    setAiMsgIndex(0);
-    for (let i = 0; i < AI_MESSAGES.length; i++) {
-      await new Promise((r) => setTimeout(r, i === AI_MESSAGES.length - 1 ? 700 : 850));
-      setAiMsgIndex(i);
+function pointAt(fraction: number): [number, number] {
+  const target = fraction * OPT_SEGMENTS.total;
+  let acc = 0;
+  for (const s of OPT_SEGMENTS.segs) {
+    if (acc + s.len >= target) {
+      const t = (target - acc) / s.len;
+      return [s.from[0] + (s.to[0] - s.from[0]) * t,
+              s.from[1] + (s.to[1] - s.from[1]) * t];
     }
-    await new Promise((r) => setTimeout(r, 500));
-    setStage("results");
+    acc += s.len;
+  }
+  return OPTIMIZED_ROUTE[OPTIMIZED_ROUTE.length - 1] as [number, number];
+}
 
-    // Fire AI summary in the background
-    if (dataset) {
-      setAiLoading(true);
-      setAiSummary("");
-      const ctx = `LIVE WAREHOUSE CONTEXT — Smart Picking run:
-- Orders: ${dataset.orders}
-- SKUs: ${dataset.skus}
-- Pick lines: ${dataset.lines}
-- Baseline walking distance: 17.8 km
-- Optimized walking distance: 11.9 km (−33%)
-- Baseline pick time: ${dataset.workloadMin} min → 58 min (−36%)
-- Labor cost: $2.18 → $1.66 per order (−24%)
-- CO₂ reduction: ~4.2 kg per wave
-- Batching: 12 batches of 5–7 orders using SKU-affinity clustering
-- Route strategy: OR-Tools VRP with pick-face reach and dwell-time constraints
-- Congestion: Aisle F 14:00 spike smoothed via 12 min stagger`;
-
-      const prompt = `Explain to the warehouse manager why this optimized picking route was selected, what batching opportunities were exploited, and the expected business impact. Use the required 4-section format (Summary, Reasoning, Business Impact, Recommendation).`;
-
-      try {
-        const res = await askCopilotFn({
-          data: {
-            messages: [{ role: "user" as const, text: prompt }],
-            contextText: ctx,
-          },
-        });
-        if (res.ok) setAiSummary(res.text);
-        else setAiSummary(`Copilot unavailable: ${res.error ?? "unknown error"}`);
-      } catch (err) {
-        setAiSummary(err instanceof Error ? err.message : String(err));
-      } finally {
-        setAiLoading(false);
+// Fraction along the total route at which each pick stop sits.
+const PICK_FRACTIONS = (() => {
+  return PICK_STOPS.map((stop) => {
+    let acc = 0;
+    for (const s of OPT_SEGMENTS.segs) {
+      if (s.to[0] === stop.x && s.to[1] === stop.y) {
+        return (acc + s.len) / OPT_SEGMENTS.total;
       }
+      acc += s.len;
     }
-  }, [dataset, askCopilotFn]);
+    return 0;
+  });
+})();
+
+const LIVE_DURATION_MS = 32000; // ~32s live picker traversal
+
+/* ================================================================
+ *  Root page
+ * ================================================================*/
+
+function SmartPickingPage() {
+  const [phase, setPhase] = useState<NavPhase>("idle");
+  const [scanIdx, setScanIdx] = useState(0);
+  const [progress, setProgress] = useState(0); // 0..1 along optimized route
+  const [routeMode, setRouteMode] = useState<RouteMode>("optimized");
+  const [rationale, setRationale] = useState<string>("");
+  const [rationaleLoading, setRationaleLoading] = useState(false);
+  const askCopilotFn = useServerFn(askCopilot);
+  const rafRef = useRef<number | null>(null);
+  const startRef = useRef<number>(0);
+
+  // ---- optimization pipeline ---------------------------------------
+  const startOptimization = useCallback(async () => {
+    setPhase("scanning");
+    setScanIdx(0);
+    for (let i = 0; i < SCAN_MESSAGES.length; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, i === SCAN_MESSAGES.length - 1 ? 500 : 700));
+      setScanIdx(i);
+    }
+    await new Promise((r) => setTimeout(r, 400));
+    setPhase("live");
+    setProgress(0);
+    startRef.current = performance.now();
+
+    // Kick off Copilot rationale in parallel
+    setRationaleLoading(true);
+    setRationale("");
+    try {
+      const res = await askCopilotFn({
+        data: {
+          messages: [
+            {
+              role: "user" as const,
+              text: "In 80 words, explain why FulfillAI chose this optimized picking route for the current wave. Cover: batching nearby picks, avoiding congestion, SKU demand prioritization, and minimized cross-aisle travel. No headers — plain prose.",
+            },
+          ],
+          contextText: `Wave: 74 orders / 312 lines. Baseline 17.8 km walking → optimized 11.9 km (−33%). 7 sequential stops through Aisles A → B → C → F → K → H → dock. Congestion detected in Aisle F at 14:00 — traversed once. SKU-K7B (high demand) prioritized. Batching applied to SO-88291 and SO-88293.`,
+        },
+      });
+      setRationale(res.ok ? res.text : "AI narration temporarily unavailable.");
+    } catch {
+      setRationale("AI narration temporarily unavailable.");
+    } finally {
+      setRationaleLoading(false);
+    }
+  }, [askCopilotFn]);
+
+  // ---- live traversal RAF ------------------------------------------
+  useEffect(() => {
+    if (phase !== "live") return;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startRef.current) / LIVE_DURATION_MS);
+      setProgress(t);
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+      else setPhase("complete");
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [phase]);
 
   const reset = () => {
-    setStage("upload");
-    setDataset(null);
-    setAiSummary("");
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    setPhase("idle");
+    setProgress(0);
+    setScanIdx(0);
+    setRationale("");
   };
+
+  // ---- derived live nav state --------------------------------------
+  const visitedCount = PICK_FRACTIONS.filter((f) => progress >= f - 0.001).length;
+  const currentStopIdx = Math.min(visitedCount, PICK_STOPS.length - 1);
+  const nextStopIdx = Math.min(visitedCount, PICK_STOPS.length - 1);
+  const remainingKm = (1 - progress) * 11.9;
+  const remainingSec = Math.max(0, Math.round((1 - progress) * (LIVE_DURATION_MS / 1000)));
+  const remainingPicks = PICK_STOPS.length - visitedCount;
+  const efficiency = phase === "idle" ? 0 : Math.min(100, 74 + progress * 24);
 
   return (
     <AppShell>
-      <div className="flex h-[calc(100vh-4rem)] flex-col gap-4 p-4 lg:p-5">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-              FulfillAI · Smart Picking Engine
-            </div>
-            <h1 className="mt-1 font-display text-3xl leading-tight text-foreground">
-              Smart Picking
-            </h1>
-          </div>
-          <StageStepper stage={stage} />
-        </header>
+      <div className="flex h-[calc(100vh-4rem)] flex-col gap-3 bg-[oklch(0.985_0.004_250)] p-3 lg:p-4">
+        {/* Top bar — Tesla / Google Maps style header */}
+        <TopBar
+          phase={phase}
+          routeMode={routeMode}
+          onRouteMode={setRouteMode}
+          onOptimize={startOptimization}
+          onReset={reset}
+        />
 
-        <div className="relative min-h-0 flex-1">
-          {stage === "upload" && (
-            <UploadStage onDemo={handleDemo} onCsv={handleCsv} />
-          )}
-          {stage === "validated" && dataset && (
-            <ValidateStage
-              dataset={dataset}
-              onOptimize={runOptimize}
-              onBack={reset}
+        {/* 70 / 30 main split */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1fr_360px]">
+          {/* LEFT — Digital twin */}
+          <section className="card-surface relative flex min-h-[420px] flex-col overflow-hidden">
+            <NavigationMap
+              phase={phase}
+              progress={progress}
+              routeMode={routeMode}
+              visitedCount={visitedCount}
+              currentStopIdx={currentStopIdx}
             />
-          )}
-          {stage === "results" && dataset && (
-            <ResultsStage
-              dataset={dataset}
-              aiSummary={aiSummary}
-              aiLoading={aiLoading}
-              onReset={reset}
+            {/* Floating scan overlay */}
+            {phase === "scanning" && <ScanOverlay msgIdx={scanIdx} />}
+            {/* Floating BEFORE / AFTER strip (only after optimization) */}
+            {(phase === "live" || phase === "complete") && (
+              <BeforeAfterStrip progress={phase === "complete" ? 1 : progress} />
+            )}
+            {/* Floating destination toast */}
+            {phase === "live" && remainingPicks > 0 && (
+              <DestinationToast stop={PICK_STOPS[nextStopIdx]} />
+            )}
+            {phase === "complete" && <ArrivalToast />}
+          </section>
+
+          {/* RIGHT — Live nav panel */}
+          <aside className="flex min-h-0 flex-col gap-3">
+            <LiveNavigationPanel
+              phase={phase}
+              currentStop={PICK_STOPS[currentStopIdx]}
+              nextStop={PICK_STOPS[nextStopIdx]}
+              remainingKm={remainingKm}
+              remainingSec={remainingSec}
+              remainingPicks={remainingPicks}
+              efficiency={efficiency}
+              progress={progress}
+              visitedCount={visitedCount}
+              totalStops={PICK_STOPS.length}
             />
-          )}
+            <AiNarrationCard
+              phase={phase}
+              rationale={rationale}
+              loading={rationaleLoading}
+              stop={PICK_STOPS[nextStopIdx]}
+            />
+          </aside>
         </div>
-      </div>
 
-      {stage === "optimizing" && <OptimizingOverlay msgIndex={aiMsgIndex} />}
+        {/* BOTTOM — Collapsible tabs */}
+        <BottomPanel />
+      </div>
     </AppShell>
   );
 }
 
-/* ============================================================
- * Stage 0 · Stepper
- * ==========================================================*/
-function StageStepper({ stage }: { stage: Stage }) {
-  const steps = [
-    { id: "upload", label: "Upload" },
-    { id: "validated", label: "Validate" },
-    { id: "optimizing", label: "Optimize" },
-    { id: "results", label: "Deploy" },
-  ] as const;
-  const activeIdx = steps.findIndex((s) => s.id === stage);
+/* ================================================================
+ *  Top bar (Tesla-style — glass, minimal, dense)
+ * ================================================================*/
+
+function TopBar({
+  phase,
+  routeMode,
+  onRouteMode,
+  onOptimize,
+  onReset,
+}: {
+  phase: NavPhase;
+  routeMode: RouteMode;
+  onRouteMode: (m: RouteMode) => void;
+  onOptimize: () => void;
+  onReset: () => void;
+}) {
+  const canOptimize = phase === "idle";
   return (
-    <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2 py-1.5 text-[11px]">
-      {steps.map((s, i) => {
-        const done = i < activeIdx;
-        const active = i === activeIdx;
-        return (
-          <div key={s.id} className="flex items-center gap-1.5">
-            <span
-              className={`flex h-5 w-5 items-center justify-center rounded-full font-mono text-[10px] font-semibold transition ${
-                done
-                  ? "bg-emerald-500 text-white"
-                  : active
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-surface-muted text-muted-foreground"
-              }`}
-            >
-              {done ? "✓" : i + 1}
+    <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-white/80 px-4 py-2.5 shadow-sm backdrop-blur">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-[0_6px_18px_-6px_rgba(16,185,129,0.6)]">
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+            <path d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Zm0 6a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" />
+          </svg>
+        </div>
+        <div>
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${phase === "live" ? "animate-pulse bg-emerald-500" : phase === "complete" ? "bg-emerald-500" : "bg-slate-400"}`} />
+            FulfillAI Navigation
+            <span className="font-mono text-[10px] text-slate-400">
+              · {phase === "idle" ? "Standby" : phase === "scanning" ? "Planning" : phase === "live" ? "En route" : "Arrived"}
             </span>
-            <span
-              className={`pr-1 ${active ? "font-semibold text-foreground" : "text-muted-foreground"}`}
+          </div>
+          <div className="font-display text-[15px] leading-tight text-foreground">
+            Reno DC-04 · Wave 3
+          </div>
+        </div>
+      </div>
+
+      {/* Route mode segmented control */}
+      <div className="flex items-center gap-1 rounded-full border border-border bg-white p-1 text-[11px] shadow-sm">
+        {(["current", "optimized", "both"] as RouteMode[]).map((m) => (
+          <button
+            key={m}
+            onClick={() => onRouteMode(m)}
+            className={`rounded-full px-3 py-1 font-medium capitalize transition ${
+              routeMode === m
+                ? "bg-slate-900 text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {m === "current" ? "Current" : m === "optimized" ? "Optimized" : "Compare"}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2">
+        {phase !== "idle" && (
+          <button
+            onClick={onReset}
+            className="rounded-lg border border-border bg-white px-3 py-1.5 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            Reset
+          </button>
+        )}
+        <button
+          onClick={onOptimize}
+          disabled={!canOptimize}
+          className="group relative overflow-hidden rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-[12.5px] font-semibold text-white shadow-[0_8px_22px_-8px_rgba(16,185,129,0.65)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span className="relative z-10 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
+              <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
+            </svg>
+            {phase === "idle" ? "Optimize with AI" : phase === "scanning" ? "Planning…" : phase === "live" ? "Navigating…" : "Route delivered"}
+          </span>
+          <span className="pointer-events-none absolute inset-0 -translate-x-full bg-white/25 transition-transform duration-700 group-hover:translate-x-full" />
+        </button>
+      </div>
+    </header>
+  );
+}
+
+/* ================================================================
+ *  Navigation map — Digital twin with worker & routes
+ * ================================================================*/
+
+const ZONE_FILL: Record<Zone, string> = {
+  A: "oklch(0.78 0.16 75 / 0.42)",
+  B: "oklch(0.34 0.09 260 / 0.22)",
+  C: "oklch(0.34 0.09 260 / 0.09)",
+};
+const ZONE_STROKE: Record<Zone, string> = {
+  A: "oklch(0.6 0.14 70)",
+  B: "oklch(0.34 0.09 260 / 0.55)",
+  C: "oklch(0.34 0.09 260 / 0.28)",
+};
+
+function NavigationMap({
+  phase,
+  progress,
+  routeMode,
+  visitedCount,
+  currentStopIdx,
+}: {
+  phase: NavPhase;
+  progress: number;
+  routeMode: RouteMode;
+  visitedCount: number;
+  currentStopIdx: number;
+}) {
+  const optimizedD = useMemo(
+    () => "M " + OPTIMIZED_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L "),
+    [],
+  );
+  const naiveD = useMemo(
+    () => "M " + NAIVE_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L "),
+    [],
+  );
+  const worker = pointAt(progress);
+  const showOpt = routeMode === "optimized" || routeMode === "both";
+  const showCurrent = routeMode === "current" || routeMode === "both";
+
+  return (
+    <div className="relative flex-1 overflow-hidden">
+      <svg
+        viewBox={`0 0 ${WAREHOUSE_WIDTH} ${WAREHOUSE_HEIGHT}`}
+        className="absolute inset-0 h-full w-full"
+        role="img"
+        aria-label="Live warehouse navigation"
+      >
+        <defs>
+          <pattern id="nav-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="oklch(0.93 0.006 250)" strokeWidth="1" />
+          </pattern>
+          <linearGradient id="opt-grad" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="oklch(0.62 0.19 240)" />
+            <stop offset="1" stopColor="oklch(0.65 0.15 210)" />
+          </linearGradient>
+          <radialGradient id="worker-glow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stopColor="oklch(0.62 0.19 240 / 0.8)" />
+            <stop offset="1" stopColor="oklch(0.62 0.19 240 / 0)" />
+          </radialGradient>
+        </defs>
+
+        {/* Floor */}
+        <rect x="0" y="0" width={WAREHOUSE_WIDTH} height={WAREHOUSE_HEIGHT} fill="oklch(0.985 0.004 250)" />
+        <rect x="20" y="20" width={WAREHOUSE_WIDTH - 40} height={WAREHOUSE_HEIGHT - 40} fill="url(#nav-grid)" opacity="0.55" rx="10" />
+        <rect x="20" y="20" width={WAREHOUSE_WIDTH - 40} height={WAREHOUSE_HEIGHT - 40} fill="none" stroke="oklch(0.34 0.09 260 / 0.32)" strokeWidth="2" rx="10" />
+
+        {/* Zones */}
+        <g opacity="0.9">
+          <rect x="780" y="40" width="380" height="680" fill="oklch(0.78 0.16 75 / 0.06)" rx="4" />
+          <rect x="420" y="40" width="360" height="680" fill="oklch(0.34 0.09 260 / 0.035)" rx="4" />
+          <rect x="40" y="40" width="380" height="680" fill="oklch(0.34 0.09 260 / 0.015)" rx="4" />
+          <text x="60" y="60" fontSize="10" fontWeight="600" fill="oklch(0.5 0.02 260)" letterSpacing="1.5">ZONE C · SLOW</text>
+          <text x="440" y="60" fontSize="10" fontWeight="600" fill="oklch(0.5 0.02 260)" letterSpacing="1.5">ZONE B · MEDIUM</text>
+          <text x="800" y="60" fontSize="10" fontWeight="600" fill="oklch(0.55 0.14 70)" letterSpacing="1.5">ZONE A · FAST MOVERS</text>
+        </g>
+
+        {/* Dock (loading) */}
+        <g>
+          <rect x="1050" y="640" width="110" height="80" fill="oklch(0.96 0.05 85)" stroke="oklch(0.55 0.14 70)" strokeWidth="1" rx="4" />
+          <text x="1105" y="682" textAnchor="middle" fontSize="10" fontWeight="700" fill="oklch(0.35 0.09 60)">LOADING DOCK</text>
+          <text x="1105" y="700" textAnchor="middle" fontSize="9" fill="oklch(0.45 0.05 60)">Start / End</text>
+        </g>
+
+        {/* Packing station */}
+        <g>
+          <rect x="1050" y="40" width="110" height="140" fill="oklch(0.34 0.09 260 / 0.06)" stroke="oklch(0.34 0.09 260 / 0.4)" strokeWidth="1" strokeDasharray="4 4" rx="4" />
+          <text x="1105" y="64" textAnchor="middle" fontSize="10" fontWeight="700" fill="oklch(0.35 0.09 260)">PACKING</text>
+          {[0, 1, 2, 3].map((i) => (
+            <rect key={i} x={1064} y={80 + i * 22} width="82" height="16" fill="oklch(0.99 0 0)" stroke="oklch(0.34 0.09 260 / 0.3)" rx="2" />
+          ))}
+        </g>
+
+        {/* Aisles */}
+        {AISLES.map((aisle) => (
+          <g key={aisle.id}>
+            {aisle.racks.map((r) => (
+              <rect
+                key={r.id}
+                x={r.x}
+                y={r.y}
+                width={r.w}
+                height={r.h}
+                fill={ZONE_FILL[r.zone]}
+                stroke={ZONE_STROKE[r.zone]}
+                strokeWidth="0.75"
+                rx="1.5"
+              />
+            ))}
+            <text
+              x={aisle.racks[0].x + aisle.racks[0].w / 2}
+              y={78}
+              textAnchor="middle"
+              fontSize="11"
+              fontWeight="700"
+              fill="oklch(0.4 0.06 260)"
+              fontFamily="'JetBrains Mono', monospace"
             >
-              {s.label}
-            </span>
-            {i < steps.length - 1 && (
-              <span className="h-px w-4 bg-border" />
+              {aisle.label}
+            </text>
+          </g>
+        ))}
+
+        {/* CURRENT (naive) route — gray dashed */}
+        {showCurrent && (
+          <g className="transition-opacity duration-500">
+            <path
+              d={naiveD}
+              fill="none"
+              stroke="oklch(0.6 0.01 260 / 0.55)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="10 8"
+            />
+          </g>
+        )}
+
+        {/* OPTIMIZED route — blue animated */}
+        {showOpt && (
+          <g>
+            {/* halo */}
+            <path
+              d={optimizedD}
+              fill="none"
+              stroke="url(#opt-grad)"
+              strokeWidth="12"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.18"
+            />
+            {/* base */}
+            <path
+              d={optimizedD}
+              fill="none"
+              stroke="url(#opt-grad)"
+              strokeWidth="4.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.35"
+            />
+            {/* animated dash overlay */}
+            <path
+              d={optimizedD}
+              fill="none"
+              stroke="oklch(0.72 0.17 235)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="14 10"
+              className="nav-flow"
+            />
+          </g>
+        )}
+
+        {/* Pick stops */}
+        {showOpt &&
+          PICK_STOPS.map((s, i) => {
+            const visited = i < visitedCount;
+            const current = i === currentStopIdx && phase === "live" && visitedCount < PICK_STOPS.length;
+            const color = visited
+              ? "oklch(0.65 0.18 155)"
+              : current
+                ? "oklch(0.7 0.19 60)"
+                : "oklch(0.62 0.19 240)";
+            return (
+              <g key={s.index}>
+                {current && (
+                  <circle cx={s.x} cy={s.y} r="20" fill="none" stroke={color} strokeWidth="2" opacity="0.6">
+                    <animate attributeName="r" values="12;28;12" dur="1.6s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.9;0;0.9" dur="1.6s" repeatCount="indefinite" />
+                  </circle>
+                )}
+                <circle cx={s.x} cy={s.y} r={visited ? 11 : current ? 13 : 10} fill="white" stroke={color} strokeWidth={current ? 3 : 2} />
+                <text x={s.x} y={s.y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill={color}>
+                  {visited ? "✓" : s.index}
+                </text>
+              </g>
+            );
+          })}
+
+        {/* Dock start pin */}
+        <g>
+          <circle cx={DOCK[0]} cy={DOCK[1]} r="8" fill="oklch(0.35 0.09 60)" />
+          <circle cx={DOCK[0]} cy={DOCK[1]} r="3" fill="white" />
+        </g>
+
+        {/* Worker (Tesla-blue) */}
+        {(phase === "live" || phase === "complete") && showOpt && (
+          <g transform={`translate(${worker[0]} ${worker[1]})`}>
+            <circle r="26" fill="url(#worker-glow)" />
+            <circle r="14" fill="oklch(0.62 0.19 240 / 0.25)" />
+            <circle r="8" fill="oklch(0.62 0.19 240)" stroke="white" strokeWidth="2.5" />
+            {phase === "live" && (
+              <circle r="14" fill="none" stroke="oklch(0.62 0.19 240)" strokeWidth="1.5" opacity="0.7">
+                <animate attributeName="r" values="10;22;10" dur="1.6s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.9;0;0.9" dur="1.6s" repeatCount="indefinite" />
+              </circle>
             )}
+          </g>
+        )}
+      </svg>
+
+      {/* Legend chip */}
+      <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-full border border-border bg-white/95 px-3 py-1.5 text-[10px] font-medium text-slate-600 shadow-sm backdrop-blur">
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Visited</span>
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-amber-500" />Current</span>
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full" style={{ background: "oklch(0.62 0.19 240)" }} />Upcoming</span>
+      </div>
+
+      <style>{`
+        .nav-flow { stroke-dashoffset: 0; animation: nav-flow-anim 1.4s linear infinite; }
+        @keyframes nav-flow-anim { to { stroke-dashoffset: -48; } }
+      `}</style>
+    </div>
+  );
+}
+
+/* ================================================================
+ *  Floating overlays
+ * ================================================================*/
+
+function ScanOverlay({ msgIdx }: { msgIdx: number }) {
+  const progress = ((msgIdx + 1) / SCAN_MESSAGES.length) * 100;
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-[oklch(0.985_0.004_250)]/85 backdrop-blur-sm animate-fade-in">
+      <div className="w-[min(440px,90%)] rounded-2xl border border-border bg-white/95 p-5 shadow-xl backdrop-blur">
+        <div className="flex items-center gap-3">
+          <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-400/40">
+            <svg viewBox="0 0 24 24" className="h-5 w-5 text-emerald-600" fill="currentColor">
+              <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
+            </svg>
+            <span className="absolute inset-0 rounded-xl border border-emerald-400/60 animate-ping" />
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-600">FulfillAI Optimizer</div>
+            <div className="text-[15px] font-semibold text-foreground">Planning your wave</div>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-1.5 font-mono text-[12px]">
+          {SCAN_MESSAGES.map((m, i) => {
+            const done = i < msgIdx;
+            const current = i === msgIdx;
+            return (
+              <div key={m} className={`flex items-center gap-2 transition ${i > msgIdx ? "opacity-30" : "opacity-100"}`}>
+                <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+                  done ? "bg-emerald-500 text-white" : current ? "bg-amber-100 text-amber-700 ring-1 ring-amber-300" : "bg-slate-100 text-slate-400"
+                }`}>{done ? "✓" : current ? "…" : ""}</span>
+                <span className={current ? "text-foreground" : done ? "text-slate-500" : "text-slate-400"}>{m}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-500" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DestinationToast({ stop }: { stop: PickStop }) {
+  return (
+    <div className="pointer-events-none absolute right-3 top-3 z-20 flex w-[220px] items-center gap-2.5 rounded-xl border border-border bg-white/95 px-3 py-2 shadow-lg backdrop-blur animate-fade-in">
+      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+          <path d="M12 2C7.6 2 4 5.6 4 10c0 5.6 8 12 8 12s8-6.4 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
+        </svg>
+      </div>
+      <div className="min-w-0">
+        <div className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Next destination</div>
+        <div className="truncate font-mono text-[12px] font-semibold text-foreground">{stop.bin} · {stop.sku}</div>
+      </div>
+    </div>
+  );
+}
+
+function ArrivalToast() {
+  return (
+    <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 shadow-lg animate-fade-in">
+      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-white">
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3">
+          <path d="M5 12l5 5 9-11" />
+        </svg>
+      </div>
+      <div>
+        <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-700">Wave complete</div>
+        <div className="text-[12px] font-semibold text-emerald-900">All 7 picks delivered</div>
+      </div>
+    </div>
+  );
+}
+
+function BeforeAfterStrip({ progress }: { progress: number }) {
+  const rows: [string, number, number, string][] = [
+    ["Distance", 17.8, 11.9, "km"],
+    ["Time", 91, 58, "min"],
+    ["Labor cost", 2.18, 1.66, "$ / order"],
+  ];
+  return (
+    <div className="pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col gap-1.5 rounded-xl border border-border bg-white/95 px-3 py-2.5 shadow-lg backdrop-blur animate-fade-in">
+      <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Before → After</div>
+      {rows.map(([label, from, to, unit]) => {
+        const cur = from + (to - from) * progress;
+        return (
+          <div key={label} className="flex items-center gap-3 font-mono text-[11px]">
+            <span className="w-16 text-slate-500">{label}</span>
+            <span className="text-slate-400 line-through">{typeof from === "number" && from < 10 ? `$${from.toFixed(2)}` : from}</span>
+            <svg viewBox="0 0 24 24" className="h-3 w-3 text-emerald-500" fill="currentColor"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            <span className="font-semibold text-emerald-700 tabular-nums">
+              {label === "Labor cost" ? `$${cur.toFixed(2)}` : cur.toFixed(label === "Distance" ? 1 : 0)}
+            </span>
+            <span className="text-slate-400">{unit}</span>
           </div>
         );
       })}
@@ -215,567 +709,352 @@ function StageStepper({ stage }: { stage: Stage }) {
   );
 }
 
-/* ============================================================
- * Stage 1 · Upload
- * ==========================================================*/
-function UploadStage({
-  onDemo,
-  onCsv,
-}: {
-  onDemo: () => void;
-  onCsv: (f: File) => void;
-}) {
-  const [drag, setDrag] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+/* ================================================================
+ *  Live Navigation Panel (right side)
+ * ================================================================*/
 
-  const handleFiles = (files: FileList | null) => {
-    const f = files?.[0];
-    if (f) onCsv(f);
-  };
+function LiveNavigationPanel({
+  phase,
+  currentStop,
+  nextStop,
+  remainingKm,
+  remainingSec,
+  remainingPicks,
+  efficiency,
+  progress,
+  visitedCount,
+  totalStops,
+}: {
+  phase: NavPhase;
+  currentStop: PickStop;
+  nextStop: PickStop;
+  remainingKm: number;
+  remainingSec: number;
+  remainingPicks: number;
+  efficiency: number;
+  progress: number;
+  visitedCount: number;
+  totalStops: number;
+}) {
+  const eta = new Date(Date.now() + remainingSec * 1000);
+  const etaStr = eta.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const idle = phase === "idle";
 
   return (
-    <div className="animate-fade-in grid h-full grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDrag(true);
-        }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDrag(false);
-          handleFiles(e.dataTransfer.files);
-        }}
-        className={`card-surface relative flex flex-col items-center justify-center gap-4 overflow-hidden p-8 text-center transition ${
-          drag ? "border-emerald-400 bg-emerald-50/50" : ""
-        }`}
-      >
-        <div className="pointer-events-none absolute inset-0 opacity-40 [background:radial-gradient(circle_at_50%_20%,rgba(16,185,129,0.12),transparent_60%)]" />
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-400/30">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-7 w-7 text-emerald-500"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
-          </svg>
+    <div className="card-surface flex min-h-0 flex-col overflow-hidden">
+      {/* Big current step banner (Waze style) */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-[oklch(0.22_0.06_260)] to-[oklch(0.15_0.05_260)] p-4 text-white">
+        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60">
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${phase === "live" ? "animate-pulse bg-emerald-400" : "bg-white/30"}`} />
+          {phase === "live" ? "Live navigation" : phase === "complete" ? "Route complete" : "Awaiting optimization"}
         </div>
-        <div className="relative">
-          <h2 className="font-display text-xl text-foreground">
-            Drop your orders CSV here
-          </h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            One row per order line · columns: order_id, sku, qty, priority
-          </p>
-        </div>
-        <div className="relative flex flex-wrap items-center justify-center gap-3">
-          <button
-            onClick={() => inputRef.current?.click()}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
-          >
-            Browse files
-          </button>
-          <span className="text-xs text-muted-foreground">or</span>
-          <button
-            onClick={onDemo}
-            className="rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_6px_20px_-6px_rgba(16,185,129,0.55)] transition hover:brightness-110"
-          >
-            Use Demo Orders
-          </button>
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".csv,text/csv"
-          className="hidden"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
-        <p className="relative mt-2 text-[11px] text-muted-foreground">
-          Max 50k lines · encrypted in transit
-        </p>
-      </div>
-
-      <aside className="card-surface flex flex-col gap-3 p-5">
-        <h3 className="text-sm font-semibold text-foreground">How it works</h3>
-        {[
-          ["1", "Upload orders", "Drag a CSV or use the demo dataset."],
-          ["2", "AI validates", "Line counts, SKU coverage, workload."],
-          ["3", "Optimizer runs", "Batching + VRP + congestion model."],
-          ["4", "Deploy to floor", "Animated route ready for pickers."],
-        ].map(([n, t, d]) => (
-          <div key={n} className="flex gap-3">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 font-mono text-[11px] font-semibold text-primary">
-              {n}
-            </span>
-            <div className="text-[12px] leading-snug">
-              <div className="font-medium text-foreground">{t}</div>
-              <div className="text-muted-foreground">{d}</div>
+        <div className="mt-2 flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20">
+            {phase === "complete" ? (
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-emerald-300" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12l5 5 9-11" /></svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-emerald-300" fill="currentColor"><path d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Z" /></svg>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] text-white/60">
+              {idle ? "No active route" : phase === "complete" ? "Return to dock" : `Step ${Math.min(visitedCount + 1, totalStops)} of ${totalStops}`}
+            </div>
+            <div className="mt-0.5 truncate font-display text-[20px] leading-tight">
+              {idle ? "Ready to plan" : phase === "complete" ? "Delivery complete" : `Head to ${nextStop.bin}`}
+            </div>
+            <div className="mt-0.5 font-mono text-[11px] text-white/60">
+              {idle ? "Click Optimize with AI to begin" : `Pick ${nextStop.qty}× ${nextStop.sku} · Order ${nextStop.order}`}
             </div>
           </div>
-        ))}
-        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-[11px] text-emerald-800">
-          <span className="font-semibold">Tip:</span> The demo dataset mirrors a
-          typical wave — 74 orders across 12 aisles.
         </div>
-      </aside>
+
+        {/* progress bar */}
+        <div className="mt-3">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-300 to-blue-400 transition-all duration-300"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
+          </div>
+          <div className="mt-1.5 flex items-center justify-between font-mono text-[10px] text-white/50">
+            <span>{Math.round(progress * 100)}% complete</span>
+            <span>ETA {phase === "idle" ? "—" : etaStr}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Live metrics grid */}
+      <div className="grid grid-cols-2 gap-px bg-border">
+        <NavMetric label="Remaining distance" value={idle ? "—" : `${remainingKm.toFixed(1)} km`} tone="default" />
+        <NavMetric label="Time to complete" value={idle ? "—" : `${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s`} tone="default" />
+        <NavMetric label="Remaining picks" value={idle ? "—" : `${remainingPicks} / ${totalStops}`} tone="default" />
+        <NavMetric label="Efficiency" value={idle ? "—" : `${Math.round(efficiency)}%`} tone="emerald" />
+      </div>
+
+      {/* Upcoming stops list */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Route sequence</span>
+          <span className="font-mono text-[10px] text-slate-400">{visitedCount}/{totalStops}</span>
+        </div>
+        <ul className="min-h-0 flex-1 overflow-y-auto">
+          {PICK_STOPS.map((s, i) => {
+            const done = i < visitedCount;
+            const active = phase === "live" && i === visitedCount;
+            return (
+              <li
+                key={s.index}
+                className={`flex items-center gap-3 border-b border-border/60 px-4 py-2 transition ${
+                  active ? "bg-blue-50" : done ? "bg-emerald-50/40" : ""
+                }`}
+              >
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                    done
+                      ? "bg-emerald-500 text-white"
+                      : active
+                        ? "bg-blue-600 text-white ring-4 ring-blue-100"
+                        : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {done ? "✓" : s.index}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[12px] font-semibold text-foreground">{s.bin}</span>
+                    <span className="truncate font-mono text-[10px] text-slate-500">{s.sku}</span>
+                  </div>
+                  <div className="truncate text-[10.5px] text-slate-500">
+                    Aisle {s.aisle} · qty {s.qty} · {s.order}
+                  </div>
+                </div>
+                {active && <span className="text-[10px] font-semibold uppercase tracking-widest text-blue-600">Now</span>}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }
 
-/* ============================================================
- * Stage 2 · Validate
- * ==========================================================*/
-function ValidateStage({
-  dataset,
-  onOptimize,
-  onBack,
-}: {
-  dataset: OrdersDataset;
-  onOptimize: () => void;
-  onBack: () => void;
-}) {
+function NavMetric({ label, value, tone }: { label: string; value: string; tone: "default" | "emerald" }) {
   return (
-    <div className="animate-fade-in grid h-full grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-      <div className="card-surface flex flex-col overflow-hidden">
-        <div className="border-b border-border px-5 py-3">
-          <div className="text-[11px] font-semibold uppercase tracking-widest text-emerald-600">
-            ✓ Orders validated
-          </div>
-          <h2 className="mt-0.5 font-display text-xl text-foreground">
-            {dataset.source === "csv"
-              ? dataset.fileName ?? "orders.csv"
-              : "Demo wave — Reno DC-04"}
-          </h2>
-        </div>
-        <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4">
-          <ValidateStat label="Orders" value={dataset.orders.toString()} />
-          <ValidateStat label="Unique SKUs" value={dataset.skus.toString()} />
-          <ValidateStat label="Pick lines" value={dataset.lines.toString()} />
-          <ValidateStat
-            label="Est. workload"
-            value={`${dataset.workloadMin} min`}
-          />
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 pb-5">
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Sample lines
-          </div>
-          <table className="w-full text-[12px]">
-            <thead className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="pb-2 text-left">Order</th>
-                <th className="pb-2 text-left">SKU</th>
-                <th className="pb-2 text-left">Aisle</th>
-                <th className="pb-2 text-right">Qty</th>
-              </tr>
-            </thead>
-            <tbody className="font-mono">
-              {PICK_TASKS.map((t) => (
-                <tr key={t.id} className="border-t border-border/60">
-                  <td className="py-1.5 text-foreground">{t.order}</td>
-                  <td className="py-1.5 text-foreground">{t.sku}</td>
-                  <td className="py-1.5 text-muted-foreground">{t.aisle}</td>
-                  <td className="py-1.5 text-right text-foreground">{t.qty}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-border px-5 py-3">
-          <button
-            onClick={onBack}
-            className="text-[12px] text-muted-foreground hover:text-foreground"
-          >
-            ← Change dataset
-          </button>
-          <button
-            onClick={onOptimize}
-            className="group relative overflow-hidden rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_-8px_rgba(16,185,129,0.6)] transition hover:brightness-110"
-          >
-            <span className="relative z-10 flex items-center gap-2">
-              <SparkleIcon />
-              Optimize with AI
-            </span>
-            <span className="pointer-events-none absolute inset-0 -translate-x-full bg-white/25 transition-transform duration-700 group-hover:translate-x-full" />
-          </button>
-        </div>
-      </div>
-
-      <aside className="card-surface flex flex-col gap-3 p-5">
-        <h3 className="text-sm font-semibold text-foreground">Validation checks</h3>
-        {[
-          ["Schema", "All required columns present"],
-          ["SKU coverage", "100% mapped to warehouse bins"],
-          ["Priority mix", "12% expedite · 88% standard"],
-          ["Feasibility", "Fits within a single shift"],
-        ].map(([k, v]) => (
-          <div
-            key={k}
-            className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50/50 p-2.5 text-[12px]"
-          >
-            <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">
-              ✓
-            </span>
-            <div>
-              <div className="font-medium text-foreground">{k}</div>
-              <div className="text-muted-foreground">{v}</div>
-            </div>
-          </div>
-        ))}
-      </aside>
-    </div>
-  );
-}
-
-function ValidateStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-surface-muted/40 p-3">
-      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 font-display text-2xl tabular-nums text-foreground">
+    <div className="bg-white p-3">
+      <div className="text-[10px] font-medium uppercase tracking-widest text-slate-500">{label}</div>
+      <div className={`mt-0.5 font-display text-lg tabular-nums ${tone === "emerald" ? "text-emerald-600" : "text-foreground"}`}>
         {value}
       </div>
     </div>
   );
 }
 
-/* ============================================================
- * Stage 3 · Optimizing overlay (fullscreen)
- * ==========================================================*/
-function OptimizingOverlay({ msgIndex }: { msgIndex: number }) {
-  const progress = ((msgIndex + 1) / AI_MESSAGES.length) * 100;
+/* ================================================================
+ *  AI narration card
+ * ================================================================*/
+
+function AiNarrationCard({
+  phase,
+  rationale,
+  loading,
+  stop,
+}: {
+  phase: NavPhase;
+  rationale: string;
+  loading: boolean;
+  stop: PickStop;
+}) {
+  const idle = phase === "idle";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#04070f]/95 backdrop-blur-xl animate-fade-in">
-      <div className="pointer-events-none absolute inset-0 opacity-70">
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(circle at 30% 30%, rgba(16,185,129,0.20), transparent 45%), radial-gradient(circle at 70% 70%, rgba(6,182,212,0.18), transparent 50%)",
-          }}
-        />
+    <div className="card-surface flex flex-col overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-border bg-gradient-to-r from-emerald-500/8 to-cyan-500/8 px-4 py-2.5">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15 ring-1 ring-emerald-400/40">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-600" fill="currentColor">
+            <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
+          </svg>
+        </div>
+        <div>
+          <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-emerald-700">FulfillAI Copilot</div>
+          <div className="text-[12.5px] font-semibold text-foreground">Why this route?</div>
+        </div>
       </div>
-
-      <div className="relative flex w-[min(560px,90vw)] flex-col items-center text-center text-white">
-        {/* orbiting core */}
-        <div className="relative mb-6 h-32 w-32">
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              background:
-                "conic-gradient(from 0deg, #22C55E, #10B981, #06B6D4, #22C55E)",
-              animation: "opt-spin 3s linear infinite",
-            }}
-          />
-          <div className="absolute inset-[3px] rounded-full bg-[#04070f]" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-10 w-10 text-emerald-300"
-              fill="currentColor"
-            >
-              <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
-            </svg>
-          </div>
-          <span className="absolute -inset-4 rounded-full border border-emerald-400/30 animate-ping" />
-        </div>
-
-        <div className="text-[10px] font-semibold uppercase tracking-[0.35em] text-emerald-300">
-          FulfillAI Optimizer
-        </div>
-        <h2 className="mt-2 font-display text-2xl">Running AI optimization</h2>
-
-        {/* Messages log */}
-        <div className="mt-6 w-full space-y-1.5 text-left font-mono text-[13px]">
-          {AI_MESSAGES.map((m, i) => {
-            const done = i < msgIndex;
-            const current = i === msgIndex;
-            const future = i > msgIndex;
-            return (
-              <div
-                key={m}
-                className={`flex items-center gap-2.5 transition ${
-                  future ? "opacity-25" : "opacity-100"
-                }`}
-              >
-                <span
-                  className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
-                    done
-                      ? "bg-emerald-500 text-white"
-                      : current
-                        ? "bg-emerald-400/20 text-emerald-300 ring-1 ring-emerald-400"
-                        : "bg-white/10 text-white/40"
-                  }`}
-                >
-                  {done ? "✓" : current ? "…" : ""}
-                </span>
-                <span
-                  className={
-                    current
-                      ? "text-white"
-                      : done
-                        ? "text-white/70"
-                        : "text-white/50"
-                  }
-                >
-                  {m}
-                </span>
+      <div className="p-3.5 text-[12px] leading-relaxed text-slate-700">
+        {idle ? (
+          <p className="text-slate-500">
+            Once you run the optimizer, FulfillAI explains the reasoning behind
+            every leg of the route — batched picks, congestion avoidance, and
+            demand prioritization.
+          </p>
+        ) : (
+          <>
+            <div className="mb-2 rounded-lg border border-blue-100 bg-blue-50/60 px-2.5 py-2 text-[11.5px] text-blue-900">
+              <span className="font-semibold">This stop: </span>{stop.reason}
+            </div>
+            {loading && !rationale ? (
+              <div className="space-y-1.5">
+                {[92, 78, 88, 60].map((w, i) => (
+                  <div key={i} className="h-2 animate-pulse rounded bg-slate-100" style={{ width: `${w}%` }} />
+                ))}
               </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-white/10">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-300 to-cyan-300 transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <div className="mt-2 font-mono text-[10px] text-white/50">
-          {Math.round(progress)}% · neural planner
-        </div>
+            ) : (
+              <p className="whitespace-pre-wrap">{rationale || "Building narration…"}</p>
+            )}
+          </>
+        )}
       </div>
-
-      <style>{`@keyframes opt-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-/* ============================================================
- * Stage 4 · Results + Map + AI Summary
- * ==========================================================*/
-function ResultsStage({
-  dataset,
-  aiSummary,
-  aiLoading,
-  onReset,
-}: {
-  dataset: OrdersDataset;
-  aiSummary: string;
-  aiLoading: boolean;
-  onReset: () => void;
-}) {
-  const kpis = [
-    { label: "Current walking", value: "17.8", unit: "km" },
-    { label: "Optimized walking", value: "11.9", unit: "km", positive: true },
-    { label: "Distance reduction", value: "−33", unit: "%", positive: true },
-    { label: "Time saved", value: "33", unit: "min", positive: true },
-    { label: "Labor cost saved", value: "$186", unit: "/ wave", positive: true },
-    { label: "CO₂ reduction", value: "4.2", unit: "kg", positive: true },
-  ];
+/* ================================================================
+ *  Bottom collapsible tabs
+ * ================================================================*/
 
+type BottomTab = "orders" | "validation" | "dataset" | "history";
+
+function BottomPanel() {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<BottomTab>("orders");
+  const tabs: { id: BottomTab; label: string; count?: number }[] = [
+    { id: "orders", label: "Orders", count: PICK_TASKS.length },
+    { id: "validation", label: "Validation" },
+    { id: "dataset", label: "Dataset" },
+    { id: "history", label: "History" },
+  ];
   return (
-    <div className="animate-fade-in grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-[1fr_380px]">
-      {/* Map + KPI strip */}
-      <div className="flex min-h-0 flex-col gap-4">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-          {kpis.map((k) => (
-            <div
-              key={k.label}
-              className={`rounded-xl border p-3 ${
-                k.positive
-                  ? "border-emerald-200 bg-emerald-50/60"
-                  : "border-border bg-surface-muted/40"
+    <div className="card-surface overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+        <div className="flex items-center gap-1">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => {
+                setTab(t.id);
+                setOpen(true);
+              }}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] font-medium transition ${
+                open && tab === t.id
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                {k.label}
-              </div>
-              <div className="mt-0.5 flex items-baseline gap-1">
-                <span
-                  className={`font-display text-xl tabular-nums ${
-                    k.positive ? "text-emerald-700" : "text-foreground"
-                  }`}
-                >
-                  {k.value}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {k.unit}
-                </span>
-              </div>
-            </div>
+              {t.label}
+              {t.count !== undefined && (
+                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-mono ${
+                  open && tab === t.id ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"
+                }`}>{t.count}</span>
+              )}
+            </button>
           ))}
         </div>
-
-        <section className="card-surface relative flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border px-5 py-3">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Optimized picking route
-              </div>
-              <div className="mt-0.5 font-display text-lg text-foreground">
-                Wave · {dataset.orders} orders · {dataset.lines} lines
-              </div>
-            </div>
-            <button
-              onClick={onReset}
-              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] text-foreground hover:bg-surface-muted"
-            >
-              Run another wave
-            </button>
-          </div>
-          <div className="relative flex-1 overflow-hidden bg-surface-muted/30">
-            <WarehouseMap className="h-full w-full" />
-            <AnimatedPicker />
-          </div>
-        </section>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-100"
+        >
+          {open ? "Collapse" : "Expand"}
+          <svg viewBox="0 0 24 24" className={`h-3 w-3 transition ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 15l6-6 6 6" /></svg>
+        </button>
       </div>
+      {open && (
+        <div className="max-h-[240px] overflow-y-auto p-3 text-[12px] animate-fade-in">
+          {tab === "orders" && <OrdersTable />}
+          {tab === "validation" && <ValidationList />}
+          {tab === "dataset" && <DatasetSummary />}
+          {tab === "history" && <HistoryList />}
+        </div>
+      )}
+    </div>
+  );
+}
 
-      {/* AI summary */}
-      <aside className="card-surface flex min-h-0 flex-col overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-border bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 px-4 py-3">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 ring-1 ring-emerald-400/40">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-3.5 w-3.5 text-emerald-600"
-              fill="currentColor"
-            >
-              <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
-            </svg>
-          </div>
+function OrdersTable() {
+  return (
+    <table className="w-full text-[11.5px]">
+      <thead className="text-[9.5px] uppercase tracking-widest text-slate-500">
+        <tr>
+          <th className="pb-2 text-left">Order</th>
+          <th className="pb-2 text-left">SKU</th>
+          <th className="pb-2 text-left">Aisle</th>
+          <th className="pb-2 text-left">Bin</th>
+          <th className="pb-2 text-right">Qty</th>
+          <th className="pb-2 text-right">ETA</th>
+        </tr>
+      </thead>
+      <tbody className="font-mono">
+        {PICK_TASKS.map((t) => (
+          <tr key={t.id} className="border-t border-border/60">
+            <td className="py-1.5 text-foreground">{t.order}</td>
+            <td className="py-1.5 text-foreground">{t.sku}</td>
+            <td className="py-1.5 text-slate-500">{t.aisle}</td>
+            <td className="py-1.5 text-slate-500">{t.bin}</td>
+            <td className="py-1.5 text-right text-foreground">{t.qty}</td>
+            <td className="py-1.5 text-right text-slate-500">{t.eta}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function ValidationList() {
+  const rows: [string, string][] = [
+    ["Schema", "All required columns present"],
+    ["SKU coverage", "100% mapped to warehouse bins"],
+    ["Priority mix", "12% expedite · 88% standard"],
+    ["Feasibility", "Fits within a single shift"],
+  ];
+  return (
+    <div className="grid gap-1.5 md:grid-cols-2">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex items-start gap-2 rounded-md border border-emerald-100 bg-emerald-50/50 p-2">
+          <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white">✓</span>
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-emerald-700">
-              FulfillAI Copilot
-            </div>
-            <div className="text-[13px] font-semibold text-foreground">
-              AI route rationale
-            </div>
+            <div className="font-medium text-foreground">{k}</div>
+            <div className="text-slate-500">{v}</div>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 text-[13px] leading-relaxed text-foreground">
-          {aiLoading && !aiSummary ? (
-            <SummarySkeleton />
-          ) : aiSummary ? (
-            <FormattedSummary text={aiSummary} />
-          ) : (
-            <p className="text-muted-foreground">Awaiting AI analysis…</p>
-          )}
-        </div>
-      </aside>
+      ))}
     </div>
   );
 }
 
-function SummarySkeleton() {
+function DatasetSummary() {
+  const stats: [string, string][] = [
+    ["Wave", "74 orders"],
+    ["Pick lines", "312"],
+    ["Unique SKUs", "118"],
+    ["Aisles touched", "7 of 12"],
+    ["Source", "Reno DC-04 · demo"],
+    ["Cadence", "2s telemetry"],
+  ];
   return (
-    <div className="space-y-3">
-      {[80, 60, 90, 70].map((w, i) => (
-        <div key={i} className="space-y-1.5">
-          <div className="h-3 w-24 animate-pulse rounded bg-surface-muted" />
-          <div
-            className="h-2 animate-pulse rounded bg-surface-muted"
-            style={{ width: `${w}%` }}
-          />
-          <div
-            className="h-2 animate-pulse rounded bg-surface-muted"
-            style={{ width: `${w - 15}%` }}
-          />
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+      {stats.map(([k, v]) => (
+        <div key={k} className="rounded-md border border-border bg-white p-2">
+          <div className="text-[9.5px] uppercase tracking-widest text-slate-500">{k}</div>
+          <div className="mt-0.5 font-mono text-[12px] text-foreground">{v}</div>
         </div>
       ))}
     </div>
   );
 }
 
-function FormattedSummary({ text }: { text: string }) {
-  // Split by section headers (Summary / Reasoning / Business Impact / Recommendation)
-  const parts = text
-    .split(/^\s*(?:\*\*)?(?:\d+\.\s*)?(Summary|Reasoning|Business Impact|Recommendation)(?:\*\*)?\s*[:\-–]?\s*$/im)
-    .filter(Boolean);
-  // If splitting didn't work, just render raw
-  if (parts.length < 3) {
-    return <p className="whitespace-pre-wrap text-foreground/90">{text}</p>;
-  }
-  const sections: Array<{ title: string; body: string }> = [];
-  for (let i = 0; i < parts.length; i++) {
-    if (/^(Summary|Reasoning|Business Impact|Recommendation)$/i.test(parts[i])) {
-      sections.push({ title: parts[i], body: (parts[i + 1] ?? "").trim() });
-      i++;
-    }
-  }
+function HistoryList() {
+  const rows: [string, string, string][] = [
+    ["Wave 2 · 08:14", "68 orders", "−31% travel"],
+    ["Wave 1 · 06:02", "72 orders", "−28% travel"],
+    ["Overnight · 23:40", "54 orders", "−35% travel"],
+  ];
   return (
-    <div className="space-y-3">
-      {sections.map((s) => (
-        <div key={s.title} className="animate-fade-in">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">
-            {s.title}
-          </div>
-          <p className="mt-1 whitespace-pre-wrap text-foreground/90">
-            {s.body.replace(/^\*\*|\*\*$/g, "")}
-          </p>
-        </div>
+    <ul className="divide-y divide-border">
+      {rows.map(([when, orders, delta]) => (
+        <li key={when} className="flex items-center justify-between py-1.5">
+          <span className="font-mono text-[11px] text-slate-600">{when}</span>
+          <span className="text-[11px] text-slate-500">{orders}</span>
+          <span className="text-[11px] font-semibold text-emerald-600">{delta}</span>
+        </li>
       ))}
-    </div>
-  );
-}
-
-/* ============================================================
- * Animated picker following OPTIMIZED_ROUTE
- * ==========================================================*/
-function AnimatedPicker() {
-  const routeStr =
-    "M " + OPTIMIZED_ROUTE.map(([x, y]) => `${x} ${y}`).join(" L ");
-
-  return (
-    <svg
-      viewBox="0 0 1200 760"
-      className="pointer-events-none absolute inset-0 h-full w-full"
-    >
-      <defs>
-        <path id="opt-path" d={routeStr} />
-      </defs>
-      {/* Highlighted destination pings */}
-      {OPTIMIZED_ROUTE.slice(1, -1).map(([x, y], i) => (
-        <g key={i}>
-          <circle
-            cx={x}
-            cy={y}
-            r="14"
-            fill="none"
-            stroke="oklch(0.65 0.18 155)"
-            strokeWidth="1.5"
-            opacity="0.6"
-          >
-            <animate
-              attributeName="r"
-              values="6;18;6"
-              dur="2.2s"
-              begin={`${i * 0.4}s`}
-              repeatCount="indefinite"
-            />
-            <animate
-              attributeName="opacity"
-              values="0.9;0;0.9"
-              dur="2.2s"
-              begin={`${i * 0.4}s`}
-              repeatCount="indefinite"
-            />
-          </circle>
-        </g>
-      ))}
-      {/* Worker */}
-      <g>
-        <circle r="18" fill="oklch(0.65 0.18 155 / 0.25)">
-          <animateMotion dur="14s" repeatCount="indefinite">
-            <mpath href="#opt-path" />
-          </animateMotion>
-        </circle>
-        <circle r="10" fill="oklch(0.65 0.18 155)" stroke="white" strokeWidth="2.5">
-          <animateMotion dur="14s" repeatCount="indefinite">
-            <mpath href="#opt-path" />
-          </animateMotion>
-        </circle>
-      </g>
-    </svg>
-  );
-}
-
-function SparkleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-      <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
-    </svg>
+    </ul>
   );
 }
