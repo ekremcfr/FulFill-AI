@@ -242,6 +242,25 @@ function SmartPickingPage() {
   const remainingSec = Math.max(0, Math.round((1 - progress) * (LIVE_DURATION_MS / 1000)));
   const remainingPicks = PICK_STOPS.length - visitedCount;
   const efficiency = phase === "idle" ? 0 : Math.min(100, 74 + progress * 24);
+  // Walking speed jitters around 1.35 m/s while live, freezes on complete.
+  const walkSpeed = phase === "live" ? 1.28 + Math.sin(progress * 20) * 0.12 : phase === "complete" ? 0 : 0;
+  // Approx total in-wave path length used for the turn-by-turn card (~480 m).
+  const TOTAL_M = 480;
+
+  // Detect when a pick has just been completed → flash toast for 1.6s.
+  const [pickedFlash, setPickedFlash] = useState<PickStop | null>(null);
+  const prevVisitedRef = useRef(0);
+  useEffect(() => {
+    if (visitedCount > prevVisitedRef.current && visitedCount <= PICK_STOPS.length) {
+      const justPicked = PICK_STOPS[visitedCount - 1];
+      setPickedFlash(justPicked);
+      const t = window.setTimeout(() => setPickedFlash(null), 1800);
+      prevVisitedRef.current = visitedCount;
+      return () => window.clearTimeout(t);
+    }
+    prevVisitedRef.current = visitedCount;
+  }, [visitedCount]);
+
 
   return (
     <AppShell>
