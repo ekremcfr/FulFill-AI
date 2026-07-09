@@ -397,6 +397,7 @@ function TopBar({
       </div>
 
       <div className="flex items-center gap-2">
+        <LiveDemo onTriggerOptimize={onOptimize} canTrigger={canOptimize} />
         {phase !== "idle" && (
           <button
             onClick={onReset}
@@ -422,6 +423,7 @@ function TopBar({
     </header>
   );
 }
+
 
 /* ================================================================
  *  Navigation map — Digital twin with worker & routes
