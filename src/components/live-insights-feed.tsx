@@ -125,11 +125,11 @@ export function LiveInsightsFeed() {
         </div>
         <ul className="flex-1 divide-y divide-border overflow-y-auto">
           {visible.map((it) => (
-            <li key={it.id}>
+            <li key={it.id} className="animate-fade-in">
               <button
                 onClick={() => setActive(it)}
                 className={`group flex w-full flex-col gap-2 p-4 text-left transition hover:bg-surface-muted/60 ${
-                  pulseId === it.id ? "bg-emerald-50/70" : ""
+                  pulseId === it.id ? "bg-emerald-50/70 ring-1 ring-inset ring-emerald-300/60" : ""
                 }`}
               >
                 <div className="flex items-start gap-2.5">
@@ -150,6 +150,15 @@ export function LiveInsightsFeed() {
                   <MetaCell label="Impact" value={it.businessImpact} tone="foreground" />
                   <MetaCell label="Savings" value={it.estimatedSavings} tone="emerald" />
                   <ConfidenceCell value={it.confidence} />
+                </div>
+                <div className="ml-8 flex items-start gap-1.5 rounded-md border border-primary/25 bg-primary/5 px-2 py-1.5">
+                  <svg viewBox="0 0 24 24" className="mt-0.5 h-3 w-3 shrink-0 text-primary" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M12 2l2 5 5 .5-4 3.5 1.5 5L12 13l-4.5 3L9 11 5 7.5 10 7z" />
+                  </svg>
+                  <div className="min-w-0">
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-primary">Recommendation</div>
+                    <p className="text-[11px] leading-snug text-foreground">{it.recommendation}</p>
+                  </div>
                 </div>
                 <div className="ml-8 flex items-center gap-1 text-[10px] font-medium text-primary opacity-0 transition group-hover:opacity-100">
                   Click for AI explanation
