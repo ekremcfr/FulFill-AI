@@ -12,6 +12,8 @@ import {
   type Zone,
 } from "@/lib/warehouse-data";
 import { askCopilot } from "@/lib/copilot.functions";
+import { LiveDemo } from "@/components/live-demo";
+
 
 export const Route = createFileRoute("/routes")({
   head: () => ({
@@ -397,6 +399,7 @@ function TopBar({
       </div>
 
       <div className="flex items-center gap-2">
+        <LiveDemo onTriggerOptimize={onOptimize} canTrigger={canOptimize} />
         {phase !== "idle" && (
           <button
             onClick={onReset}
@@ -422,6 +425,7 @@ function TopBar({
     </header>
   );
 }
+
 
 /* ================================================================
  *  Navigation map — Digital twin with worker & routes
