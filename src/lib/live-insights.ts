@@ -44,6 +44,8 @@ export function makeInsightPool(): LiveInsight[] {
         "Wave capacity will saturate around 15:20 without an extra picker on Wave 4.",
       estimatedSavings: "$1,240 / day",
       confidence: 0.94,
+      recommendation:
+        "Add 1 picker to Wave 4 by 14:45 and pre-stage Zone A totes to hold OTIF.",
     },
     {
       id: uid(),
@@ -56,6 +58,8 @@ export function makeInsightPool(): LiveInsight[] {
       businessImpact: "Pick rate in Zone C down 22% vs. shift baseline.",
       estimatedSavings: "$860 / day",
       confidence: 0.88,
+      recommendation:
+        "Redirect 2 pickers from Aisle J to Aisle L; hold new Zone C releases for 8 min.",
     },
     {
       id: uid(),
@@ -68,6 +72,8 @@ export function makeInsightPool(): LiveInsight[] {
       businessImpact: "Eliminates 2.4 mi/day of travel across 6 pickers.",
       estimatedSavings: "$1,820 / month",
       confidence: 0.91,
+      recommendation:
+        "Schedule reslot of SKU-K7B to Bin B12-03 during next overnight replen window.",
     },
     {
       id: uid(),
@@ -80,6 +86,8 @@ export function makeInsightPool(): LiveInsight[] {
       businessImpact: "+31% throughput on Wave 3, −18 min completion time.",
       estimatedSavings: "$2,140 / week",
       confidence: 0.86,
+      recommendation:
+        "Switch Wave 3 to 8-order batch cartons with sort-to-light at packing station 2.",
     },
     {
       id: uid(),
@@ -93,6 +101,8 @@ export function makeInsightPool(): LiveInsight[] {
         "38.5 hours/day of labor recovered across the picking team.",
       estimatedSavings: "$1,420 / day",
       confidence: 0.92,
+      recommendation:
+        "Apply optimized A→C→F→H route to all active waves and lock for the shift.",
     },
     {
       id: uid(),
@@ -105,6 +115,8 @@ export function makeInsightPool(): LiveInsight[] {
       businessImpact: "−22% picker wait time, +7% orders/hour.",
       estimatedSavings: "$540 / day",
       confidence: 0.83,
+      recommendation:
+        "Delay Wave 4 release to 14:12 and shift 2 pickers to Aisle F backfill.",
     },
     {
       id: uid(),
@@ -117,6 +129,8 @@ export function makeInsightPool(): LiveInsight[] {
       businessImpact: "Prevents 62 backorders and preserves OTIF.",
       estimatedSavings: "$310 / incident",
       confidence: 0.78,
+      recommendation:
+        "Trigger emergency replen PO for SKU-F1A (240 units) before EOD Wednesday.",
     },
     {
       id: uid(),
@@ -129,6 +143,8 @@ export function makeInsightPool(): LiveInsight[] {
       businessImpact: "Prevents 9-minute average dwell at pack-out.",
       estimatedSavings: "$220 / day",
       confidence: 0.81,
+      recommendation:
+        "Reroute next 18 completed totes to Pack Stations 1 & 4 via WMS override.",
     },
   ];
 }
