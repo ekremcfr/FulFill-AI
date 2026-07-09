@@ -12,6 +12,8 @@ import {
   type Zone,
 } from "@/lib/warehouse-data";
 import { askCopilot } from "@/lib/copilot.functions";
+import { LiveDemo } from "@/components/live-demo";
+
 
 export const Route = createFileRoute("/routes")({
   head: () => ({
