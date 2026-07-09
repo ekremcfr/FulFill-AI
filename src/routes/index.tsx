@@ -62,21 +62,27 @@ function WarehousePage() {
                 Reno DC-04 <span className="text-muted-foreground">/ Floor 1</span>
               </h1>
             </div>
-            <button
-              onClick={triggerOptimize}
-              disabled={opt.phase !== "idle" && opt.phase !== "done"}
-              className="group relative overflow-hidden rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-[12px] font-semibold text-white shadow-[0_6px_24px_-8px_rgba(16,185,129,0.55)] transition hover:from-emerald-500 hover:to-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <span className="relative z-10 flex items-center gap-2">
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-                  <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
-                </svg>
-                {opt.phase === "idle" || opt.phase === "done"
-                  ? "Optimize Warehouse"
-                  : "Optimizing…"}
-              </span>
-              <span className="pointer-events-none absolute inset-0 -translate-x-full bg-white/25 group-hover:translate-x-full transition-transform duration-700" />
-            </button>
+            <div className="flex items-center gap-2">
+              <PresentationMode
+                onTriggerOptimize={triggerOptimize}
+                canTrigger={opt.phase === "idle" || opt.phase === "done"}
+              />
+              <button
+                onClick={triggerOptimize}
+                disabled={opt.phase !== "idle" && opt.phase !== "done"}
+                className="group relative overflow-hidden rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-[12px] font-semibold text-white shadow-[0_6px_24px_-8px_rgba(16,185,129,0.55)] transition hover:from-emerald-500 hover:to-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <span className="relative z-10 flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
+                    <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
+                  </svg>
+                  {opt.phase === "idle" || opt.phase === "done"
+                    ? "Optimize Warehouse"
+                    : "Optimizing…"}
+                </span>
+                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-white/25 group-hover:translate-x-full transition-transform duration-700" />
+              </button>
+            </div>
           </div>
 
           <div className="relative flex-1">
