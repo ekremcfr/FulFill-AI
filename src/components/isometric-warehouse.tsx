@@ -531,7 +531,7 @@ export function IsometricWarehouse({
           </filter>
         </defs>
 
-        <g transform={cameraTransform}>
+        <g transform={cameraTransform} style={cameraStyle}>
           {/* FLOOR */}
           <polygon points={floor} fill="url(#floor-grad)" stroke="#B8C1D1" strokeWidth="1.2" />
           <polygon points={floor} fill="url(#floor-lines)" opacity="0.5" />
