@@ -789,12 +789,13 @@ function BeforeAfterStrip({ progress }: { progress: number }) {
 
 function LiveNavigationPanel({
   phase,
-  currentStop,
+  currentStop: _currentStop,
   nextStop,
   remainingKm,
   remainingSec,
   remainingPicks,
   efficiency,
+  walkSpeed,
   progress,
   visitedCount,
   totalStops,
@@ -806,10 +807,12 @@ function LiveNavigationPanel({
   remainingSec: number;
   remainingPicks: number;
   efficiency: number;
+  walkSpeed: number;
   progress: number;
   visitedCount: number;
   totalStops: number;
 }) {
+
   const eta = new Date(Date.now() + remainingSec * 1000);
   const etaStr = eta.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const idle = phase === "idle";
