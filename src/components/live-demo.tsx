@@ -255,10 +255,20 @@ function ExecutiveSummary({ onExit }: { onExit: () => void }) {
   ];
 
   return (
-    <div className="pointer-events-auto absolute inset-0 flex items-center justify-center bg-[oklch(0.08_0.03_260)]/85 backdrop-blur-xl animate-fade-in">
-      <div className="w-[min(880px,94vw)] rounded-3xl border border-white/10 bg-gradient-to-br from-[oklch(0.16_0.05_260)] to-[oklch(0.11_0.04_260)] p-8 text-white shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]">
+    <div className="pointer-events-auto fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-[oklch(0.08_0.03_260)]/85 backdrop-blur-xl animate-fade-in p-4">
+      <div className="relative my-auto w-[min(880px,94vw)] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-3xl border border-white/10 bg-gradient-to-br from-[oklch(0.16_0.05_260)] to-[oklch(0.11_0.04_260)] p-8 text-white shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]">
+        {/* Close (X) button */}
+        <button
+          onClick={onExit}
+          aria-label="Close executive summary"
+          className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition hover:bg-white/15 hover:text-white"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pr-12">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/20 ring-1 ring-emerald-400/40">
             <IcSparkle className="h-5 w-5 text-emerald-300" />
           </div>
@@ -271,6 +281,7 @@ function ExecutiveSummary({ onExit }: { onExit: () => void }) {
             </div>
           </div>
         </div>
+
 
         {/* Metrics */}
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
