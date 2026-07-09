@@ -18,7 +18,7 @@ interface Chapter {
   title: string;
   body: string;
   kicker: string;
-  icon: (className: string) => JSX.Element;
+  icon: (className: string) => React.ReactElement;
 }
 
 const CH: Chapter[] = [
