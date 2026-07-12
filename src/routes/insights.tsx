@@ -24,9 +24,24 @@ const STREAM = [
   { t: "14:19:12", type: "FLOW", msg: "Wave 4 preview: 61 orders · projected 38 min" },
 ];
 
+const FILTERS = ["All", "Slotting", "Routing", "Flow", "Capex"] as const;
+type Filter = typeof FILTERS[number];
+
+function categoryOf(it: Insight): Exclude<Filter, "All"> {
+  const s = `${it.title} ${it.detail}`.toLowerCase();
+  if (/reslot|slot|zone|golden|affinity|batch/.test(s)) return "Slotting";
+  if (/route|reroute|path|pick(er)? p-/.test(s)) return "Routing";
+  if (/capex|automation|as\/rs|roi|payback/.test(s)) return "Capex";
+  if (/congest|flow|wave|stagger/.test(s)) return "Flow";
+  return "Slotting";
+}
+
 function InsightsPage() {
-  return (
-    <AppShell>
+  const [filter, setFilter] = useState<Filter>("All");
+  const filtered = useMemo(
+    () => filter === "All" ? INSIGHTS : INSIGHTS.filter((it) => categoryOf(it) === filter),
+    [filter],
+  );
       <div className="grid gap-4 p-4 lg:grid-cols-3 lg:p-5">
         <div className="lg:col-span-2 space-y-4">
           <div className="card-surface p-5">
