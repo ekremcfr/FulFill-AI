@@ -73,15 +73,24 @@ function InsightsPage() {
             <div className="flex items-center justify-between border-b border-border px-5 py-3">
               <h2 className="text-sm font-semibold text-foreground">Prioritized decisions</h2>
               <div className="flex gap-1 text-[11px]">
-                {["All", "Slotting", "Routing", "Flow", "Capex"].map((f, i) => (
-                  <button key={f} className={`rounded-md px-2 py-1 ${i === 0 ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-muted"}`}>
+                {FILTERS.map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`rounded-md px-2 py-1 transition ${filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-muted"}`}
+                  >
                     {f}
                   </button>
                 ))}
               </div>
             </div>
             <ul className="divide-y divide-border">
-              {INSIGHTS.map((it) => (
+              {filtered.length === 0 && (
+                <li className="p-8 text-center text-sm text-muted-foreground">
+                  No {filter.toLowerCase()} insights right now.
+                </li>
+              )}
+              {filtered.map((it) => (
                 <li key={it.id} className="flex items-start gap-4 p-5 transition hover:bg-surface-muted/40">
                   <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor"><path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" /></svg>
@@ -97,14 +106,15 @@ function InsightsPage() {
                     </div>
                     <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{it.detail}</p>
                     <div className="mt-3 flex gap-2">
-                      <button className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90">Simulate</button>
-                      <button className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-foreground/80 hover:bg-surface-muted">Assign</button>
-                      <button className="rounded-md px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground">Snooze</button>
+                      <button onClick={() => toast.success(`Simulating: ${it.title}`, { description: "Running scenario in the decision engine…" })} className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90">Simulate</button>
+                      <button onClick={() => toast(`Assigned "${it.title}" to Ops team`)} className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-foreground/80 hover:bg-surface-muted">Assign</button>
+                      <button onClick={() => toast(`Snoozed for 24h`)} className="rounded-md px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground">Snooze</button>
                     </div>
                   </div>
                 </li>
               ))}
             </ul>
+
           </div>
         </div>
 
