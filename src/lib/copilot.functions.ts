@@ -64,6 +64,7 @@ Output format — return ONLY a single JSON object, no prose, no code fences:
 {
   "summary": string,            // 1-2 sentences headline answer
   "businessImpact": string,     // 1 sentence, quantified (%, $, hrs, orders/hr)
+  "keyDecisions": string[],     // 3-5 short bullet points naming the concrete decisions the AI made (batching, congestion avoidance, slotting, wave staggering, etc.)
   "recommendation": string,     // 1 sentence, the concrete next action
   "confidence": number          // 0..1
 }
@@ -120,7 +121,7 @@ export const askCopilot = createServerFn({ method: "POST" })
         config: {
           systemInstruction,
           temperature: data.mode === "detailed" ? 0.7 : 0.4,
-          maxOutputTokens: data.mode === "detailed" ? 800 : 320,
+          maxOutputTokens: data.mode === "detailed" ? 800 : 700,
           ...(data.mode === "concise" ? { responseMimeType: "application/json" } : {}),
         },
       });

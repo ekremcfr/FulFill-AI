@@ -22,6 +22,7 @@ interface ConciseCard {
   businessImpact: string;
   recommendation: string;
   confidence: number; // 0..1
+  keyDecisions?: string[];
 }
 
 interface Msg {
@@ -36,7 +37,12 @@ interface Msg {
 }
 
 function parseCard(raw: string): ConciseCard | null {
-  const trimmed = raw.trim().replace(/^```json\s*|\s*```$/g, "");
+  let trimmed = raw.trim().replace(/^```json\s*|\s*```$/g, "");
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) {
+    trimmed = trimmed.slice(first, last + 1);
+  }
   try {
     const j = JSON.parse(trimmed);
     if (
@@ -50,6 +56,7 @@ function parseCard(raw: string): ConciseCard | null {
         businessImpact: j.businessImpact,
         recommendation: j.recommendation,
         confidence: Math.max(0, Math.min(1, c)),
+        keyDecisions: Array.isArray(j.keyDecisions) ? j.keyDecisions.slice(0, 6) : undefined,
       };
     }
   } catch {
@@ -462,6 +469,21 @@ function ConciseCardView({
     <div className="space-y-2">
       <MiniCard tone="summary" icon={<WarehouseIcon />} label="Summary" value={card.summary} />
       <MiniCard tone="impact" icon={<TrendIcon />} label="Business Impact" value={card.businessImpact} />
+      {card.keyDecisions && card.keyDecisions.length > 0 && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+            <TargetIcon /> Key Decisions
+          </div>
+          <ul className="mt-1.5 space-y-1">
+            {card.keyDecisions.map((d, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-[12px] text-white/85">
+                <span className="mt-1.5 inline-block h-1 w-1 shrink-0 rounded-full bg-emerald-400" />
+                <span>{d}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <MiniCard tone="rec" icon={<TargetIcon />} label="Recommendation" value={card.recommendation} />
 
       <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
