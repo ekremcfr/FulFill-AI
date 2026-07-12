@@ -325,6 +325,7 @@ function SmartPickingPage() {
             progress={progress}
             visitedCount={visitedCount}
             totalStops={PICK_STOPS.length}
+            onHide={() => setRightOpen(false)}
           />
           <AiNarrationCard
             phase={phase}
