@@ -252,4 +252,6 @@ export function ExportModal({ open, onClose }: ExportModalProps) {
       </div>
     </div>
   );
+  return typeof document !== "undefined" ? createPortal(node, document.body) : node;
 }
+
