@@ -325,6 +325,7 @@ function SmartPickingPage() {
             progress={progress}
             visitedCount={visitedCount}
             totalStops={PICK_STOPS.length}
+            onHide={() => setRightOpen(false)}
           />
           <AiNarrationCard
             phase={phase}
@@ -1038,6 +1039,7 @@ function LiveNavigationPanel({
   progress,
   visitedCount,
   totalStops,
+  onHide,
 }: {
   phase: NavPhase;
   currentStop: PickStop;
@@ -1050,6 +1052,7 @@ function LiveNavigationPanel({
   progress: number;
   visitedCount: number;
   totalStops: number;
+  onHide: () => void;
 }) {
 
   const eta = new Date(Date.now() + remainingSec * 1000);
@@ -1060,9 +1063,20 @@ function LiveNavigationPanel({
     <div className="card-surface flex min-h-0 flex-col overflow-hidden">
       {/* Big current step banner (Waze style) */}
       <div className="relative overflow-hidden bg-gradient-to-br from-[oklch(0.22_0.06_260)] to-[oklch(0.15_0.05_260)] p-4 text-white">
-        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60">
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${phase === "live" ? "animate-pulse bg-emerald-400" : "bg-white/30"}`} />
-          {phase === "live" ? "Live navigation" : phase === "complete" ? "Route complete" : "Awaiting optimization"}
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60">
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${phase === "live" ? "animate-pulse bg-emerald-400" : "bg-white/30"}`} />
+            {phase === "live" ? "Live navigation" : phase === "complete" ? "Route complete" : "Awaiting optimization"}
+          </div>
+          <button
+            onClick={onHide}
+            aria-label="Hide navigation panel"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         </div>
         <div className="mt-2 flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20">
