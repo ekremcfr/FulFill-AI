@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { AppShell } from "@/components/app-shell";
 import {
@@ -264,80 +264,125 @@ function SmartPickingPage() {
   }, [visitedCount]);
 
 
+  const [rightOpen, setRightOpen] = useState(true);
+
   return (
     <AppShell>
-      <div className="flex h-[calc(100vh-4rem)] flex-col gap-3 bg-[oklch(0.985_0.004_250)] p-3 lg:p-4">
-        {/* Top bar — Tesla / Google Maps style header */}
-        <TopBar
-          phase={phase}
-          routeMode={routeMode}
-          onRouteMode={setRouteMode}
-          onOptimize={startOptimization}
-          onReset={reset}
-        />
-
-        {/* 70 / 30 main split */}
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1fr_360px]">
-          {/* LEFT — Digital twin */}
-          <section className="card-surface relative flex min-h-[420px] flex-col overflow-hidden">
-            <NavigationMap
-              phase={phase}
-              progress={progress}
-              routeMode={routeMode}
-              visitedCount={visitedCount}
-              currentStopIdx={currentStopIdx}
-            />
-            {/* Floating scan overlay */}
-            {phase === "scanning" && <ScanOverlay msgIdx={scanIdx} />}
-            {/* Floating BEFORE / AFTER strip (only after optimization) */}
-            {(phase === "live" || phase === "complete") && (
-              <BeforeAfterStrip progress={phase === "complete" ? 1 : progress} />
-            )}
-            {/* Google Maps style turn-by-turn card */}
-            {(phase === "live" || phase === "complete") && (
-              <TurnByTurnCard
-                phase={phase}
-                progress={progress}
-                visitedCount={visitedCount}
-                totalM={TOTAL_M}
-                walkSpeed={walkSpeed}
-              />
-            )}
-            {/* Pick-completed flash */}
-            {pickedFlash && <PickedFlash stop={pickedFlash} />}
-            {phase === "complete" && <ArrivalToast />}
-
-          </section>
-
-          {/* RIGHT — Live nav panel */}
-          <aside className="flex min-h-0 flex-col gap-3">
-            <LiveNavigationPanel
-              phase={phase}
-              currentStop={PICK_STOPS[currentStopIdx]}
-              nextStop={PICK_STOPS[nextStopIdx]}
-              remainingKm={remainingKm}
-              remainingSec={remainingSec}
-              remainingPicks={remainingPicks}
-              efficiency={efficiency}
-              walkSpeed={walkSpeed}
-              progress={progress}
-              visitedCount={visitedCount}
-              totalStops={PICK_STOPS.length}
-            />
-
-            <AiNarrationCard
-              phase={phase}
-              rationale={rationale}
-              loading={rationaleLoading}
-              stop={PICK_STOPS[nextStopIdx]}
-            />
-          </aside>
+      <div className="relative h-[calc(100vh-4rem)] overflow-hidden bg-[oklch(0.985_0.004_250)]">
+        {/* Full-bleed digital twin — the map IS the app */}
+        <div className="absolute inset-0">
+          <NavigationMap
+            phase={phase}
+            progress={progress}
+            routeMode={routeMode}
+            visitedCount={visitedCount}
+            currentStopIdx={currentStopIdx}
+          />
         </div>
 
-        {/* BOTTOM — Collapsible tabs */}
-        <BottomPanel />
+        {/* Subtle vignette / gradient wash so overlays read cleanly */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-transparent to-white/20" />
+
+        {/* Floating top bar */}
+        <div className="absolute inset-x-3 top-3 z-30 lg:inset-x-4 lg:top-4">
+          <TopBar
+            phase={phase}
+            routeMode={routeMode}
+            onRouteMode={setRouteMode}
+            onOptimize={startOptimization}
+            onReset={reset}
+          />
+        </div>
+
+        {/* Overlays on the map */}
+        {phase === "scanning" && <ScanOverlay msgIdx={scanIdx} />}
+        {(phase === "live" || phase === "complete") && (
+          <BeforeAfterStrip progress={phase === "complete" ? 1 : progress} />
+        )}
+        {(phase === "live" || phase === "complete") && (
+          <TurnByTurnCard
+            phase={phase}
+            progress={progress}
+            visitedCount={visitedCount}
+            totalM={TOTAL_M}
+            walkSpeed={walkSpeed}
+          />
+        )}
+        {pickedFlash && <PickedFlash stop={pickedFlash} />}
+        {phase === "complete" && <ArrivalToast />}
+
+        {/* Right-side collapsible navigation drawer */}
+        <RightDrawer open={rightOpen} onToggle={() => setRightOpen((o) => !o)}>
+          <LiveNavigationPanel
+            phase={phase}
+            currentStop={PICK_STOPS[currentStopIdx]}
+            nextStop={PICK_STOPS[nextStopIdx]}
+            remainingKm={remainingKm}
+            remainingSec={remainingSec}
+            remainingPicks={remainingPicks}
+            efficiency={efficiency}
+            walkSpeed={walkSpeed}
+            progress={progress}
+            visitedCount={visitedCount}
+            totalStops={PICK_STOPS.length}
+          />
+          <AiNarrationCard
+            phase={phase}
+            rationale={rationale}
+            loading={rationaleLoading}
+            stop={PICK_STOPS[nextStopIdx]}
+          />
+        </RightDrawer>
+
+        {/* Bottom-floating collapsible tables drawer */}
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 lg:inset-x-4 lg:bottom-4">
+          <div className="pointer-events-auto">
+            <BottomPanel />
+          </div>
+        </div>
       </div>
     </AppShell>
+  );
+}
+
+/* ================================================================
+ *  Right-side collapsible navigation drawer
+ * ================================================================*/
+
+function RightDrawer({
+  open,
+  onToggle,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      {/* Toggle tab — always visible on right edge */}
+      <button
+        onClick={onToggle}
+        className="absolute top-1/2 z-30 flex -translate-y-1/2 items-center gap-1 rounded-l-lg border border-r-0 border-border bg-white/95 px-1.5 py-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600 shadow-lg backdrop-blur transition hover:bg-white"
+        aria-label={open ? "Collapse navigation panel" : "Expand navigation panel"}
+        style={{ right: open ? "clamp(320px, 25vw, 400px)" : 0 }}
+      >
+        <svg viewBox="0 0 24 24" className={`h-3 w-3 transition ${open ? "" : "rotate-180"}`} fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+
+      <aside
+        className={`absolute right-0 top-20 bottom-24 z-20 flex flex-col gap-3 overflow-hidden p-3 transition-all duration-300 ease-out lg:p-4 ${
+          open ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none"
+        }`}
+        style={{ width: "clamp(320px, 25vw, 400px)" }}
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {children}
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -469,7 +514,7 @@ function NavigationMap({
   const showCurrent = routeMode === "current" || routeMode === "both";
 
   return (
-    <div className="relative flex-1 overflow-hidden">
+    <div className="relative h-full w-full overflow-hidden">
       <svg
         viewBox={`0 0 ${WAREHOUSE_WIDTH} ${WAREHOUSE_HEIGHT}`}
         className="absolute inset-0 h-full w-full"
@@ -666,14 +711,59 @@ function NavigationMap({
             )}
           </g>
         )}
+
+        {/* Congestion heat zone — Aisle F peak at 14:00 */}
+        <g opacity="0.85">
+          <ellipse cx="546" cy="440" rx="70" ry="90" fill="oklch(0.65 0.22 25 / 0.18)">
+            <animate attributeName="opacity" values="0.35;0.75;0.35" dur="2.4s" repeatCount="indefinite" />
+          </ellipse>
+          <ellipse cx="546" cy="440" rx="45" ry="60" fill="oklch(0.65 0.22 25 / 0.28)" />
+          <text x="546" y="444" textAnchor="middle" fontSize="9" fontWeight="700" fill="oklch(0.5 0.2 25)" letterSpacing="1.2">CONGESTION</text>
+          <text x="546" y="456" textAnchor="middle" fontSize="8" fill="oklch(0.5 0.15 25)">14:00 · Aisle F</text>
+        </g>
+
+        {/* Idle forklifts */}
+        {[
+          { x: 200, y: 620, rot: 12 },
+          { x: 720, y: 660, rot: -8 },
+          { x: 980, y: 400, rot: 90 },
+        ].map((f, i) => (
+          <g key={`fl-${i}`} transform={`translate(${f.x} ${f.y}) rotate(${f.rot})`}>
+            <rect x="-11" y="-7" width="22" height="14" rx="2" fill="oklch(0.78 0.16 75)" stroke="oklch(0.35 0.09 60)" strokeWidth="0.8" />
+            <rect x="-13" y="-9" width="4" height="18" rx="0.5" fill="oklch(0.4 0.06 260)" />
+            <circle cx="-6" cy="8" r="2.5" fill="oklch(0.2 0.02 260)" />
+            <circle cx="6" cy="8" r="2.5" fill="oklch(0.2 0.02 260)" />
+            <text x="0" y="-11" textAnchor="middle" fontSize="7" fontWeight="700" fill="oklch(0.45 0.05 60)">FL-{i + 1}</text>
+          </g>
+        ))}
+
+        {/* Other pickers moving in the warehouse */}
+        {[
+          { x: 366, y: 300, name: "P-02" },
+          { x: 636, y: 200, name: "P-04" },
+          { x: 900, y: 600, name: "P-05" },
+        ].map((p, i) => (
+          <g key={`op-${i}`} transform={`translate(${p.x} ${p.y})`}>
+            <circle r="12" fill="oklch(0.55 0.05 260 / 0.18)" />
+            <circle r="6" fill="oklch(0.55 0.05 260)" stroke="white" strokeWidth="1.5" />
+            <text x="0" y="-11" textAnchor="middle" fontSize="7" fontWeight="700" fill="oklch(0.35 0.05 260)">{p.name}</text>
+          </g>
+        ))}
+
       </svg>
 
+
       {/* Legend chip */}
-      <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-full border border-border bg-white/95 px-3 py-1.5 text-[10px] font-medium text-slate-600 shadow-sm backdrop-blur">
+      <div className="pointer-events-none absolute bottom-20 left-4 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-white/95 px-3 py-2 text-[10px] font-medium text-slate-600 shadow-lg backdrop-blur">
+        <span className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Legend</span>
         <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Visited</span>
         <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-amber-500" />Current</span>
         <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full" style={{ background: "oklch(0.62 0.19 240)" }} />Upcoming</span>
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-sm" style={{ background: "oklch(0.78 0.16 75)" }} />Forklift</span>
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full" style={{ background: "oklch(0.55 0.05 260)" }} />Picker</span>
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full" style={{ background: "oklch(0.65 0.22 25 / 0.6)" }} />Congestion</span>
       </div>
+
 
       <style>{`
         .nav-flow { stroke-dashoffset: 0; animation: nav-flow-anim 1.4s linear infinite; }
@@ -785,7 +875,7 @@ function TurnByTurnCard({
   if (dismissed) return null;
 
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-20 w-[260px] animate-fade-in">
+    <div className="pointer-events-none absolute left-4 top-24 z-20 w-[280px] animate-fade-in">
       <div className="rounded-2xl border border-white/10 bg-[oklch(0.16_0.04_260)]/95 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-xl">
         {/* Header pill */}
         <div className="flex items-center gap-2 border-b border-white/10 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">
@@ -874,7 +964,7 @@ function TurnByTurnCard({
  */
 function PickedFlash({ stop }: { stop: PickStop }) {
   return (
-    <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 animate-fade-in">
+    <div className="pointer-events-none absolute left-1/2 top-24 z-30 -translate-x-1/2 animate-fade-in">
       <div className="flex items-center gap-2.5 rounded-full border border-emerald-300 bg-white px-3 py-1.5 shadow-lg">
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
           <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M5 12l5 5 9-11" /></svg>
@@ -891,7 +981,7 @@ function PickedFlash({ stop }: { stop: PickStop }) {
 
 function ArrivalToast() {
   return (
-    <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 shadow-lg animate-fade-in">
+    <div className="pointer-events-none absolute right-4 top-24 z-20 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 shadow-lg animate-fade-in">
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-white">
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3">
           <path d="M5 12l5 5 9-11" />
@@ -912,7 +1002,7 @@ function BeforeAfterStrip({ progress }: { progress: number }) {
     ["Labor cost", 2.18, 1.66, "$ / order"],
   ];
   return (
-    <div className="pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col gap-1.5 rounded-xl border border-border bg-white/95 px-3 py-2.5 shadow-lg backdrop-blur animate-fade-in">
+    <div className="pointer-events-none absolute bottom-20 right-4 z-10 flex flex-col gap-1.5 rounded-xl border border-border bg-white/95 px-3 py-2.5 shadow-lg backdrop-blur animate-fade-in">
       <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Before → After</div>
       {rows.map(([label, from, to, unit]) => {
         const cur = from + (to - from) * progress;
