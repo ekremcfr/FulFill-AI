@@ -356,7 +356,7 @@ function RightDrawer({
 }: {
   open: boolean;
   onToggle: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <>
