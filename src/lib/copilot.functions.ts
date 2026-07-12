@@ -121,8 +121,13 @@ export const askCopilot = createServerFn({ method: "POST" })
         config: {
           systemInstruction,
           temperature: data.mode === "detailed" ? 0.7 : 0.4,
-          maxOutputTokens: data.mode === "detailed" ? 800 : 700,
-          ...(data.mode === "concise" ? { responseMimeType: "application/json" } : {}),
+          maxOutputTokens: data.mode === "detailed" ? 1200 : 900,
+          ...(data.mode === "concise"
+            ? {
+                responseMimeType: "application/json",
+                thinkingConfig: { thinkingBudget: 0 },
+              }
+            : {}),
         },
       });
 
