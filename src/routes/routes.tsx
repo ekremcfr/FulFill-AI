@@ -230,6 +230,38 @@ function SmartPickingPage() {
     setExecSummary(null);
     setRationale("");
     setRunCount((n) => n + 1);
+
+    // Kick off Copilot executive summary in parallel — do NOT await it,
+    // otherwise a slow/failed AI call blocks the whole cinematic pipeline.
+    setRationaleLoading(true);
+    void (async () => {
+      try {
+        const res = await askCopilotFn({
+          data: {
+            mode: "concise" as const,
+            messages: [
+              {
+                role: "user" as const,
+                text: "Produce the executive summary for the wave we just optimized. Cover: batched picks (SO-88291, SO-88293), congestion avoidance in Aisle F at 14:00, high-demand SKU-K7B prioritization, minimized cross-aisle travel, wave staggering. Keep under 120 words total.",
+              },
+            ],
+            contextText: `Wave: 74 orders / 312 lines. Baseline 17.8 km walking → optimized 11.9 km (−33%). Pick time 91 → 58 min. Labor cost $2.18 → $1.74 / order. Pick rate 96 → 118 / hr. 7 sequential stops through Aisles A → B → C → F → K → H → packing. Estimated labor savings $1,420/day, 38.5 hrs/day recovered.`,
+          },
+        });
+        if (res.ok) {
+          const parsed = tryParseSummary(res.text);
+          if (parsed) setExecSummary(parsed);
+          else setRationale(res.text);
+        } else {
+          setRationale("AI narration temporarily unavailable.");
+        }
+      } catch {
+        setRationale("AI narration temporarily unavailable.");
+      } finally {
+        setRationaleLoading(false);
+      }
+    })();
+
     for (let i = 0; i < SCAN_MESSAGES.length; i++) {
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, i === SCAN_MESSAGES.length - 1 ? 500 : 700));
@@ -239,34 +271,6 @@ function SmartPickingPage() {
     setPhase("live");
     setProgress(0);
     startRef.current = performance.now();
-
-    // Kick off Copilot executive summary in parallel (structured JSON).
-    setRationaleLoading(true);
-    try {
-      const res = await askCopilotFn({
-        data: {
-          mode: "concise" as const,
-          messages: [
-            {
-              role: "user" as const,
-              text: "Produce the executive summary for the wave we just optimized. Cover: batched picks (SO-88291, SO-88293), congestion avoidance in Aisle F at 14:00, high-demand SKU-K7B prioritization, minimized cross-aisle travel, wave staggering. Keep under 120 words total.",
-            },
-          ],
-          contextText: `Wave: 74 orders / 312 lines. Baseline 17.8 km walking → optimized 11.9 km (−33%). Pick time 91 → 58 min. Labor cost $2.18 → $1.74 / order. Pick rate 96 → 118 / hr. 7 sequential stops through Aisles A → B → C → F → K → H → packing. Estimated labor savings $1,420/day, 38.5 hrs/day recovered.`,
-        },
-      });
-      if (res.ok) {
-        const parsed = tryParseSummary(res.text);
-        if (parsed) setExecSummary(parsed);
-        else setRationale(res.text);
-      } else {
-        setRationale("AI narration temporarily unavailable.");
-      }
-    } catch {
-      setRationale("AI narration temporarily unavailable.");
-    } finally {
-      setRationaleLoading(false);
-    }
   }, [askCopilotFn]);
 
   // ---- live traversal RAF ------------------------------------------
@@ -287,6 +291,13 @@ function SmartPickingPage() {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [phase]);
+
+  // Global "Run optimizer" trigger from AppShell top bar.
+  useEffect(() => {
+    const handler = () => { if (phase === "idle") void startOptimization(); };
+    window.addEventListener("fulfillai:run-optimizer", handler);
+    return () => window.removeEventListener("fulfillai:run-optimizer", handler);
+  }, [phase, startOptimization]);
 
   const reset = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);

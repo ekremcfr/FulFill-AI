@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 export type StudyType = "Route Optimization" | "Slotting" | "Labor Analysis" | "Simulation";
@@ -141,6 +142,18 @@ export function NewStudyModal({
     return () => clearTimeout(t);
   }, [running, step, name, warehouse, type, dateRange, onClose, onComplete]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !running) onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, running, onClose]);
+
   if (!open) return null;
 
   const run = () => {
@@ -152,9 +165,14 @@ export function NewStudyModal({
     setStep(0);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in">
-      <div className="w-full max-w-lg card-surface p-6 animate-in zoom-in-95 slide-in-from-bottom-4">
+  const node = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in"
+      role="dialog"
+      aria-modal="true"
+      onClick={running ? undefined : onClose}
+    >
+      <div className="w-full max-w-lg card-surface p-6 animate-in zoom-in-95 slide-in-from-bottom-4" onClick={(e) => e.stopPropagation()}>
         {!running ? (
           <>
             <div className="mb-4">
@@ -252,4 +270,6 @@ export function NewStudyModal({
       </div>
     </div>
   );
+  return typeof document !== "undefined" ? createPortal(node, document.body) : node;
 }
+

@@ -14,10 +14,46 @@ export const Route = createFileRoute("/reports")({
   component: ReportsPage,
 });
 
+const FILTERS = ["All", "Slotting", "Routing", "Simulation", "Capex"] as const;
+type ReportFilter = typeof FILTERS[number];
+
+function downloadCsv(rows: Array<Record<string, string>>) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const esc = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [headers.join(","), ...rows.map((r) => headers.map((h) => esc(r[h])).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `fulfillai-reports-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function ReportsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [studies, setStudies] = useState<GeneratedStudy[]>([]);
+  const [filter, setFilter] = useState<ReportFilter>("All");
   const latest = studies[0];
+
+  const allRows = [...studies, ...REPORTS];
+  const rows = filter === "All" ? allRows : allRows.filter((r) => r.type === filter);
+
+  const exportCsv = () => {
+    const csvRows = allRows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      type: r.type,
+      period: r.period,
+      generated: r.generated,
+      savings: r.savings,
+    }));
+    downloadCsv(csvRows);
+  };
+
   return (
     <AppShell>
       <div className="mx-auto max-w-7xl p-5">
@@ -29,7 +65,7 @@ function ReportsPage() {
           </div>
           <div className="flex gap-2">
             <button onClick={() => setModalOpen(true)} className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground/80 hover:bg-surface-muted">New study</button>
-            <button className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Export CSV</button>
+            <button onClick={exportCsv} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Export CSV</button>
           </div>
         </div>
 
@@ -52,8 +88,12 @@ function ReportsPage() {
           <div className="flex items-center justify-between border-b border-border px-5 py-3">
             <h2 className="text-sm font-semibold text-foreground">Recent studies</h2>
             <div className="flex gap-1 text-[11px]">
-              {["All", "Slotting", "Routing", "Simulation", "Capex"].map((f, i) => (
-                <button key={f} className={`rounded-md px-2 py-1 ${i === 0 ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-muted"}`}>
+              {FILTERS.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`rounded-md px-2 py-1 transition ${filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-muted"}`}
+                >
                   {f}
                 </button>
               ))}
@@ -71,7 +111,14 @@ function ReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {[...studies, ...REPORTS].map((r) => (
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted-foreground">
+                    No {filter.toLowerCase()} studies yet.
+                  </td>
+                </tr>
+              )}
+              {rows.map((r) => (
                 <tr key={r.id} className={`transition hover:bg-surface-muted/50 ${latest && r.id === latest.id ? "bg-primary-soft/40 animate-in fade-in slide-in-from-top-2" : ""}`}>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
@@ -95,6 +142,7 @@ function ReportsPage() {
             </tbody>
           </table>
         </div>
+
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <div className="card-surface p-5">

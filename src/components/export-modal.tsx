@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import {
@@ -37,6 +38,19 @@ export function ExportModal({ open, onClose }: ExportModalProps) {
   const [format, setFormat] = useState<ExportFormat>("pdf");
   const [busy, setBusy] = useState(false);
 
+  // Escape key + body scroll lock while open.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, busy, onClose]);
+
   if (!open) return null;
 
   const toggle = (k: keyof ExportSections) =>
@@ -68,11 +82,14 @@ export function ExportModal({ open, onClose }: ExportModalProps) {
     }
   };
 
-  return (
+  const node = (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm animate-fade-in"
+      role="dialog"
+      aria-modal="true"
       onClick={busy ? undefined : onClose}
     >
+
       <div
         className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-white shadow-2xl animate-scale-in"
         onClick={(e) => e.stopPropagation()}
@@ -235,4 +252,6 @@ export function ExportModal({ open, onClose }: ExportModalProps) {
       </div>
     </div>
   );
+  return typeof document !== "undefined" ? createPortal(node, document.body) : node;
 }
+
