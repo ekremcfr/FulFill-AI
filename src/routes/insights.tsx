@@ -42,6 +42,8 @@ function InsightsPage() {
     () => filter === "All" ? INSIGHTS : INSIGHTS.filter((it) => categoryOf(it) === filter),
     [filter],
   );
+  return (
+    <AppShell>
       <div className="grid gap-4 p-4 lg:grid-cols-3 lg:p-5">
         <div className="lg:col-span-2 space-y-4">
           <div className="card-surface p-5">
