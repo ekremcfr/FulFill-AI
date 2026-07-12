@@ -1039,6 +1039,7 @@ function LiveNavigationPanel({
   progress,
   visitedCount,
   totalStops,
+  onHide,
 }: {
   phase: NavPhase;
   currentStop: PickStop;
@@ -1051,6 +1052,7 @@ function LiveNavigationPanel({
   progress: number;
   visitedCount: number;
   totalStops: number;
+  onHide: () => void;
 }) {
 
   const eta = new Date(Date.now() + remainingSec * 1000);
