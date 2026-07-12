@@ -299,7 +299,7 @@ function SmartPickingPage() {
     return () => window.removeEventListener("fulfillai:run-optimizer", handler);
   }, [phase, startOptimization]);
 
-
+  const reset = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     setPhase("idle");
     setProgress(0);
