@@ -96,6 +96,16 @@ function Sidebar() {
 
 function TopBar() {
   const [exportOpen, setExportOpen] = useState(false);
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const runOptimizer = () => {
+    if (pathname.startsWith("/routes")) {
+      // Already on Smart Picking — trigger the workflow via a global event.
+      window.dispatchEvent(new CustomEvent("fulfillai:run-optimizer"));
+    } else {
+      void navigate({ to: "/routes", search: { autorun: 1 } as never });
+    }
+  };
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-surface/80 px-5 backdrop-blur">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -116,10 +126,10 @@ function TopBar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <button className="hidden items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground/80 transition hover:bg-surface-muted md:inline-flex">
+        <span className="hidden items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground/80 md:inline-flex">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           Wave 3 · 74 orders
-        </button>
+        </span>
         <button
           onClick={() => setExportOpen(true)}
           className="hidden rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground/80 transition hover:bg-surface-muted sm:inline-flex items-center gap-1.5"
@@ -129,7 +139,10 @@ function TopBar() {
           </svg>
           Export
         </button>
-        <button className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:opacity-90">
+        <button
+          onClick={runOptimizer}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+        >
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
           </svg>
