@@ -264,80 +264,125 @@ function SmartPickingPage() {
   }, [visitedCount]);
 
 
+  const [rightOpen, setRightOpen] = useState(true);
+
   return (
     <AppShell>
-      <div className="flex h-[calc(100vh-4rem)] flex-col gap-3 bg-[oklch(0.985_0.004_250)] p-3 lg:p-4">
-        {/* Top bar — Tesla / Google Maps style header */}
-        <TopBar
-          phase={phase}
-          routeMode={routeMode}
-          onRouteMode={setRouteMode}
-          onOptimize={startOptimization}
-          onReset={reset}
-        />
-
-        {/* 70 / 30 main split */}
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1fr_360px]">
-          {/* LEFT — Digital twin */}
-          <section className="card-surface relative flex min-h-[420px] flex-col overflow-hidden">
-            <NavigationMap
-              phase={phase}
-              progress={progress}
-              routeMode={routeMode}
-              visitedCount={visitedCount}
-              currentStopIdx={currentStopIdx}
-            />
-            {/* Floating scan overlay */}
-            {phase === "scanning" && <ScanOverlay msgIdx={scanIdx} />}
-            {/* Floating BEFORE / AFTER strip (only after optimization) */}
-            {(phase === "live" || phase === "complete") && (
-              <BeforeAfterStrip progress={phase === "complete" ? 1 : progress} />
-            )}
-            {/* Google Maps style turn-by-turn card */}
-            {(phase === "live" || phase === "complete") && (
-              <TurnByTurnCard
-                phase={phase}
-                progress={progress}
-                visitedCount={visitedCount}
-                totalM={TOTAL_M}
-                walkSpeed={walkSpeed}
-              />
-            )}
-            {/* Pick-completed flash */}
-            {pickedFlash && <PickedFlash stop={pickedFlash} />}
-            {phase === "complete" && <ArrivalToast />}
-
-          </section>
-
-          {/* RIGHT — Live nav panel */}
-          <aside className="flex min-h-0 flex-col gap-3">
-            <LiveNavigationPanel
-              phase={phase}
-              currentStop={PICK_STOPS[currentStopIdx]}
-              nextStop={PICK_STOPS[nextStopIdx]}
-              remainingKm={remainingKm}
-              remainingSec={remainingSec}
-              remainingPicks={remainingPicks}
-              efficiency={efficiency}
-              walkSpeed={walkSpeed}
-              progress={progress}
-              visitedCount={visitedCount}
-              totalStops={PICK_STOPS.length}
-            />
-
-            <AiNarrationCard
-              phase={phase}
-              rationale={rationale}
-              loading={rationaleLoading}
-              stop={PICK_STOPS[nextStopIdx]}
-            />
-          </aside>
+      <div className="relative h-[calc(100vh-4rem)] overflow-hidden bg-[oklch(0.985_0.004_250)]">
+        {/* Full-bleed digital twin — the map IS the app */}
+        <div className="absolute inset-0">
+          <NavigationMap
+            phase={phase}
+            progress={progress}
+            routeMode={routeMode}
+            visitedCount={visitedCount}
+            currentStopIdx={currentStopIdx}
+          />
         </div>
 
-        {/* BOTTOM — Collapsible tabs */}
-        <BottomPanel />
+        {/* Subtle vignette / gradient wash so overlays read cleanly */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-transparent to-white/20" />
+
+        {/* Floating top bar */}
+        <div className="absolute inset-x-3 top-3 z-30 lg:inset-x-4 lg:top-4">
+          <TopBar
+            phase={phase}
+            routeMode={routeMode}
+            onRouteMode={setRouteMode}
+            onOptimize={startOptimization}
+            onReset={reset}
+          />
+        </div>
+
+        {/* Overlays on the map */}
+        {phase === "scanning" && <ScanOverlay msgIdx={scanIdx} />}
+        {(phase === "live" || phase === "complete") && (
+          <BeforeAfterStrip progress={phase === "complete" ? 1 : progress} />
+        )}
+        {(phase === "live" || phase === "complete") && (
+          <TurnByTurnCard
+            phase={phase}
+            progress={progress}
+            visitedCount={visitedCount}
+            totalM={TOTAL_M}
+            walkSpeed={walkSpeed}
+          />
+        )}
+        {pickedFlash && <PickedFlash stop={pickedFlash} />}
+        {phase === "complete" && <ArrivalToast />}
+
+        {/* Right-side collapsible navigation drawer */}
+        <RightDrawer open={rightOpen} onToggle={() => setRightOpen((o) => !o)}>
+          <LiveNavigationPanel
+            phase={phase}
+            currentStop={PICK_STOPS[currentStopIdx]}
+            nextStop={PICK_STOPS[nextStopIdx]}
+            remainingKm={remainingKm}
+            remainingSec={remainingSec}
+            remainingPicks={remainingPicks}
+            efficiency={efficiency}
+            walkSpeed={walkSpeed}
+            progress={progress}
+            visitedCount={visitedCount}
+            totalStops={PICK_STOPS.length}
+          />
+          <AiNarrationCard
+            phase={phase}
+            rationale={rationale}
+            loading={rationaleLoading}
+            stop={PICK_STOPS[nextStopIdx]}
+          />
+        </RightDrawer>
+
+        {/* Bottom-floating collapsible tables drawer */}
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 lg:inset-x-4 lg:bottom-4">
+          <div className="pointer-events-auto">
+            <BottomPanel />
+          </div>
+        </div>
       </div>
     </AppShell>
+  );
+}
+
+/* ================================================================
+ *  Right-side collapsible navigation drawer
+ * ================================================================*/
+
+function RightDrawer({
+  open,
+  onToggle,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      {/* Toggle tab — always visible on right edge */}
+      <button
+        onClick={onToggle}
+        className="absolute top-1/2 z-30 flex -translate-y-1/2 items-center gap-1 rounded-l-lg border border-r-0 border-border bg-white/95 px-1.5 py-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600 shadow-lg backdrop-blur transition hover:bg-white"
+        aria-label={open ? "Collapse navigation panel" : "Expand navigation panel"}
+        style={{ right: open ? "clamp(320px, 25vw, 400px)" : 0 }}
+      >
+        <svg viewBox="0 0 24 24" className={`h-3 w-3 transition ${open ? "" : "rotate-180"}`} fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+
+      <aside
+        className={`absolute right-0 top-20 bottom-24 z-20 flex flex-col gap-3 overflow-hidden p-3 transition-all duration-300 ease-out lg:p-4 ${
+          open ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none"
+        }`}
+        style={{ width: "clamp(320px, 25vw, 400px)" }}
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {children}
+        </div>
+      </aside>
+    </>
   );
 }
 
