@@ -620,7 +620,7 @@ function NavigationMap({
     <div className="relative h-full w-full overflow-hidden">
       <svg
         viewBox={`0 0 ${WAREHOUSE_WIDTH} ${WAREHOUSE_HEIGHT}`}
-        className="h-full w-full"
+        className="absolute inset-0 h-full w-full"
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="Live warehouse navigation"
