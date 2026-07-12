@@ -875,7 +875,7 @@ function TurnByTurnCard({
   if (dismissed) return null;
 
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-20 w-[260px] animate-fade-in">
+    <div className="pointer-events-none absolute left-4 top-24 z-20 w-[280px] animate-fade-in">
       <div className="rounded-2xl border border-white/10 bg-[oklch(0.16_0.04_260)]/95 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-xl">
         {/* Header pill */}
         <div className="flex items-center gap-2 border-b border-white/10 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">
@@ -964,7 +964,7 @@ function TurnByTurnCard({
  */
 function PickedFlash({ stop }: { stop: PickStop }) {
   return (
-    <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 animate-fade-in">
+    <div className="pointer-events-none absolute left-1/2 top-24 z-30 -translate-x-1/2 animate-fade-in">
       <div className="flex items-center gap-2.5 rounded-full border border-emerald-300 bg-white px-3 py-1.5 shadow-lg">
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
           <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M5 12l5 5 9-11" /></svg>
@@ -981,7 +981,7 @@ function PickedFlash({ stop }: { stop: PickStop }) {
 
 function ArrivalToast() {
   return (
-    <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 shadow-lg animate-fade-in">
+    <div className="pointer-events-none absolute right-4 top-24 z-20 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 shadow-lg animate-fade-in">
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-white">
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3">
           <path d="M5 12l5 5 9-11" />
@@ -1002,7 +1002,7 @@ function BeforeAfterStrip({ progress }: { progress: number }) {
     ["Labor cost", 2.18, 1.66, "$ / order"],
   ];
   return (
-    <div className="pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col gap-1.5 rounded-xl border border-border bg-white/95 px-3 py-2.5 shadow-lg backdrop-blur animate-fade-in">
+    <div className="pointer-events-none absolute bottom-20 right-4 z-10 flex flex-col gap-1.5 rounded-xl border border-border bg-white/95 px-3 py-2.5 shadow-lg backdrop-blur animate-fade-in">
       <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Before → After</div>
       {rows.map(([label, from, to, unit]) => {
         const cur = from + (to - from) * progress;
