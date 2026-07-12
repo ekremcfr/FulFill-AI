@@ -364,13 +364,14 @@ function RightDrawer({
       {/* Toggle tab — always visible on right edge */}
       <button
         onClick={onToggle}
-        className="absolute top-1/2 z-30 flex -translate-y-1/2 items-center gap-1 rounded-l-lg border border-r-0 border-border bg-white/95 px-1.5 py-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600 shadow-lg backdrop-blur transition hover:bg-white"
+        className="absolute top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1 rounded-l-xl border border-r-0 border-border bg-white px-2 py-4 text-[10px] font-semibold uppercase tracking-widest text-slate-700 shadow-[0_8px_28px_-6px_rgba(0,0,0,0.25)] backdrop-blur transition hover:bg-slate-50 hover:shadow-[0_10px_32px_-6px_rgba(0,0,0,0.3)]"
         aria-label={open ? "Collapse navigation panel" : "Expand navigation panel"}
         style={{ right: open ? "clamp(320px, 25vw, 400px)" : 0 }}
       >
-        <svg viewBox="0 0 24 24" className={`h-3 w-3 transition ${open ? "" : "rotate-180"}`} fill="none" stroke="currentColor" strokeWidth="2.5">
+        <svg viewBox="0 0 24 24" className={`h-4 w-4 transition ${open ? "" : "rotate-180"}`} fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="M9 6l6 6-6 6" />
         </svg>
+        <span className="[writing-mode:vertical-lr] rotate-180">{open ? "Hide" : "Show"}</span>
       </button>
 
       <aside
