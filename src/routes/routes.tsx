@@ -13,6 +13,11 @@ import {
 } from "@/lib/warehouse-data";
 import { askCopilot } from "@/lib/copilot.functions";
 import { LiveDemo } from "@/components/live-demo";
+import { OptimizationKpiCards } from "@/components/optimization-kpi-cards";
+import { SlottingFlashPanel } from "@/components/slotting-flash-panel";
+import { LiveInsightsToasts } from "@/components/live-insights-toasts";
+import { OptimizationSuccessModal } from "@/components/optimization-success-modal";
+import { emitOptimizationComplete } from "@/lib/optimization-events";
 
 
 export const Route = createFileRoute("/routes")({
@@ -35,6 +40,44 @@ export const Route = createFileRoute("/routes")({
 
 type NavPhase = "idle" | "scanning" | "live" | "complete";
 type RouteMode = "current" | "optimized" | "both";
+
+interface ExecutiveSummary {
+  summary: string;
+  businessImpact: string;
+  keyDecisions: string[];
+  recommendation: string;
+  confidence: number;
+}
+
+function tryParseSummary(raw: string): ExecutiveSummary | null {
+  if (!raw) return null;
+  let cleaned = raw.trim().replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
+  // Extract the first {...} JSON object if there's surrounding prose.
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) {
+    cleaned = cleaned.slice(first, last + 1);
+  }
+  try {
+    const obj = JSON.parse(cleaned) as Partial<ExecutiveSummary>;
+    if (
+      typeof obj?.summary === "string" &&
+      typeof obj?.businessImpact === "string" &&
+      typeof obj?.recommendation === "string"
+    ) {
+      return {
+        summary: obj.summary,
+        businessImpact: obj.businessImpact,
+        keyDecisions: Array.isArray(obj.keyDecisions) ? obj.keyDecisions.slice(0, 6) : [],
+        recommendation: obj.recommendation,
+        confidence: typeof obj.confidence === "number" ? obj.confidence : 0.9,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 interface PickStop {
   index: number;             // stop # (1..N)
@@ -171,7 +214,10 @@ function SmartPickingPage() {
   const [progress, setProgress] = useState(0); // 0..1 along optimized route
   const [routeMode, setRouteMode] = useState<RouteMode>("optimized");
   const [rationale, setRationale] = useState<string>("");
+  const [execSummary, setExecSummary] = useState<ExecutiveSummary | null>(null);
   const [rationaleLoading, setRationaleLoading] = useState(false);
+  const [runCount, setRunCount] = useState(0);
+  const [successOpen, setSuccessOpen] = useState(false);
   const askCopilotFn = useServerFn(askCopilot);
   const rafRef = useRef<number | null>(null);
   const startRef = useRef<number>(0);
@@ -180,6 +226,10 @@ function SmartPickingPage() {
   const startOptimization = useCallback(async () => {
     setPhase("scanning");
     setScanIdx(0);
+    setSuccessOpen(false);
+    setExecSummary(null);
+    setRationale("");
+    setRunCount((n) => n + 1);
     for (let i = 0; i < SCAN_MESSAGES.length; i++) {
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, i === SCAN_MESSAGES.length - 1 ? 500 : 700));
@@ -190,22 +240,28 @@ function SmartPickingPage() {
     setProgress(0);
     startRef.current = performance.now();
 
-    // Kick off Copilot rationale in parallel
+    // Kick off Copilot executive summary in parallel (structured JSON).
     setRationaleLoading(true);
-    setRationale("");
     try {
       const res = await askCopilotFn({
         data: {
+          mode: "concise" as const,
           messages: [
             {
               role: "user" as const,
-              text: "In 80 words, explain why FulfillAI chose this optimized picking route for the current wave. Cover: batching nearby picks, avoiding congestion, SKU demand prioritization, and minimized cross-aisle travel. No headers — plain prose.",
+              text: "Produce the executive summary for the wave we just optimized. Cover: batched picks (SO-88291, SO-88293), congestion avoidance in Aisle F at 14:00, high-demand SKU-K7B prioritization, minimized cross-aisle travel, wave staggering. Keep under 120 words total.",
             },
           ],
-          contextText: `Wave: 74 orders / 312 lines. Baseline 17.8 km walking → optimized 11.9 km (−33%). 7 sequential stops through Aisles A → B → C → F → K → H → dock. Congestion detected in Aisle F at 14:00 — traversed once. SKU-K7B (high demand) prioritized. Batching applied to SO-88291 and SO-88293.`,
+          contextText: `Wave: 74 orders / 312 lines. Baseline 17.8 km walking → optimized 11.9 km (−33%). Pick time 91 → 58 min. Labor cost $2.18 → $1.74 / order. Pick rate 96 → 118 / hr. 7 sequential stops through Aisles A → B → C → F → K → H → packing. Estimated labor savings $1,420/day, 38.5 hrs/day recovered.`,
         },
       });
-      setRationale(res.ok ? res.text : "AI narration temporarily unavailable.");
+      if (res.ok) {
+        const parsed = tryParseSummary(res.text);
+        if (parsed) setExecSummary(parsed);
+        else setRationale(res.text);
+      } else {
+        setRationale("AI narration temporarily unavailable.");
+      }
     } catch {
       setRationale("AI narration temporarily unavailable.");
     } finally {
@@ -220,7 +276,11 @@ function SmartPickingPage() {
       const t = Math.min(1, (now - startRef.current) / LIVE_DURATION_MS);
       setProgress(t);
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
-      else setPhase("complete");
+      else {
+        setPhase("complete");
+        setSuccessOpen(true);
+        emitOptimizationComplete();
+      }
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => {
@@ -234,6 +294,16 @@ function SmartPickingPage() {
     setProgress(0);
     setScanIdx(0);
     setRationale("");
+    setExecSummary(null);
+    setSuccessOpen(false);
+  };
+
+  const replay = () => {
+    reset();
+    // give React a tick to unmount overlays before restarting
+    setTimeout(() => {
+      void startOptimization();
+    }, 200);
   };
 
   // ---- derived live nav state --------------------------------------
@@ -296,9 +366,21 @@ function SmartPickingPage() {
 
         {/* Overlays on the map */}
         {phase === "scanning" && <ScanOverlay msgIdx={scanIdx} />}
+
+        {/* Phase 2 · Animated KPI cards */}
         {(phase === "live" || phase === "complete") && (
-          <BeforeAfterStrip progress={phase === "complete" ? 1 : progress} />
+          <OptimizationKpiCards
+            progress={phase === "complete" ? 1 : progress}
+            active={phase === "live" || phase === "complete"}
+          />
         )}
+
+        {/* Phase 3 · Smart Slotting recommendations */}
+        <SlottingFlashPanel visible={phase === "live" || phase === "complete"} />
+
+        {/* Phase 4 · Live AI Insights */}
+        <LiveInsightsToasts trigger={runCount} />
+
         {(phase === "live" || phase === "complete") && (
           <TurnByTurnCard
             phase={phase}
@@ -330,6 +412,7 @@ function SmartPickingPage() {
           <AiNarrationCard
             phase={phase}
             rationale={rationale}
+            summary={execSummary}
             loading={rationaleLoading}
             stop={PICK_STOPS[nextStopIdx]}
           />
@@ -341,6 +424,13 @@ function SmartPickingPage() {
             <BottomPanel />
           </div>
         </div>
+
+        {/* Phase 6 · Final success screen */}
+        <OptimizationSuccessModal
+          open={phase === "complete" && successOpen}
+          onReplay={replay}
+          onClose={() => setSuccessOpen(false)}
+        />
       </div>
     </AppShell>
   );
@@ -1192,35 +1282,64 @@ function NavMetric({ label, value, tone }: { label: string; value: string; tone:
 function AiNarrationCard({
   phase,
   rationale,
+  summary,
   loading,
   stop,
 }: {
   phase: NavPhase;
   rationale: string;
+  summary: ExecutiveSummary | null;
   loading: boolean;
   stop: PickStop;
 }) {
   const idle = phase === "idle";
+  const confidencePct = summary ? Math.round(Math.max(0, Math.min(1, summary.confidence)) * 100) : 0;
   return (
     <div className="card-surface flex flex-col overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border bg-gradient-to-r from-emerald-500/8 to-cyan-500/8 px-4 py-2.5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15 ring-1 ring-emerald-400/40">
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-600" fill="currentColor">
-            <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
-          </svg>
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-gradient-to-r from-emerald-500/8 to-cyan-500/8 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15 ring-1 ring-emerald-400/40">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-600" fill="currentColor">
+              <path d="M12 2l2.4 6.9L21 10l-5.4 4 1.8 7L12 17.3 6.6 21l1.8-7L3 10l6.6-1.1z" />
+            </svg>
+          </div>
+          <div>
+            <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-emerald-700">FulfillAI Copilot</div>
+            <div className="text-[12.5px] font-semibold text-foreground">Executive Summary</div>
+          </div>
         </div>
-        <div>
-          <div className="text-[9px] font-semibold uppercase tracking-[0.22em] text-emerald-700">FulfillAI Copilot</div>
-          <div className="text-[12.5px] font-semibold text-foreground">Why this route?</div>
-        </div>
+        {summary && (
+          <div className="flex flex-col items-end">
+            <span className="text-[8.5px] font-semibold uppercase tracking-widest text-slate-400">Confidence</span>
+            <span className="font-mono text-[12px] font-semibold text-emerald-600">{confidencePct}%</span>
+          </div>
+        )}
       </div>
       <div className="p-3.5 text-[12px] leading-relaxed text-slate-700">
         {idle ? (
           <p className="text-slate-500">
-            Once you run the optimizer, FulfillAI explains the reasoning behind
-            every leg of the route — batched picks, congestion avoidance, and
-            demand prioritization.
+            Once you run the optimizer, FulfillAI generates a full executive
+            summary — decisions, business impact, and the next action to take.
           </p>
+        ) : summary ? (
+          <div className="space-y-2.5 animate-fade-in">
+            <Section title="Summary" body={summary.summary} tone="slate" />
+            <Section title="Business Impact" body={summary.businessImpact} tone="emerald" />
+            {summary.keyDecisions.length > 0 && (
+              <div>
+                <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Key Decisions</div>
+                <ul className="space-y-1">
+                  {summary.keyDecisions.map((d, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-[11.5px] text-slate-700">
+                      <span className="mt-1 inline-block h-1 w-1 shrink-0 rounded-full bg-blue-500" />
+                      <span>{d}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <Section title="Recommendation" body={summary.recommendation} tone="blue" />
+          </div>
         ) : (
           <>
             <div className="mb-2 rounded-lg border border-blue-100 bg-blue-50/60 px-2.5 py-2 text-[11.5px] text-blue-900">
@@ -1238,6 +1357,20 @@ function AiNarrationCard({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function Section({ title, body, tone }: { title: string; body: string; tone: "slate" | "emerald" | "blue" }) {
+  const toneClass = {
+    slate: "border-slate-200 bg-slate-50/70 text-slate-700",
+    emerald: "border-emerald-200 bg-emerald-50/60 text-emerald-900",
+    blue: "border-blue-200 bg-blue-50/60 text-blue-900",
+  }[tone];
+  return (
+    <div className={`rounded-lg border px-2.5 py-2 ${toneClass}`}>
+      <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] opacity-80">{title}</div>
+      <div className="text-[11.5px] leading-snug">{body}</div>
     </div>
   );
 }
