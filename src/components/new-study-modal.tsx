@@ -270,4 +270,6 @@ export function NewStudyModal({
       </div>
     </div>
   );
+  return typeof document !== "undefined" ? createPortal(node, document.body) : node;
 }
+
