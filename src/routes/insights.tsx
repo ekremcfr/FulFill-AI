@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { INSIGHTS, KPIS } from "@/lib/warehouse-data";
+import { INSIGHTS, KPIS, type Insight } from "@/lib/warehouse-data";
 
 export const Route = createFileRoute("/insights")({
   head: () => ({
