@@ -350,8 +350,8 @@ function SmartPickingPage() {
   return (
     <AppShell>
       <div className="relative h-[calc(100vh-4rem)] overflow-hidden bg-[oklch(0.985_0.004_250)]">
-        {/* Full-bleed digital twin — the map IS the app */}
-        <div className="absolute inset-0">
+        {/* Digital twin — the map IS the app, inset so it fits comfortably */}
+        <div className="absolute inset-3 md:inset-4">
           <NavigationMap
             phase={phase}
             progress={progress}
