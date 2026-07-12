@@ -711,7 +711,47 @@ function NavigationMap({
             )}
           </g>
         )}
+
+        {/* Congestion heat zone — Aisle F peak at 14:00 */}
+        <g opacity="0.85">
+          <ellipse cx="546" cy="440" rx="70" ry="90" fill="oklch(0.65 0.22 25 / 0.18)">
+            <animate attributeName="opacity" values="0.35;0.75;0.35" dur="2.4s" repeatCount="indefinite" />
+          </ellipse>
+          <ellipse cx="546" cy="440" rx="45" ry="60" fill="oklch(0.65 0.22 25 / 0.28)" />
+          <text x="546" y="444" textAnchor="middle" fontSize="9" fontWeight="700" fill="oklch(0.5 0.2 25)" letterSpacing="1.2">CONGESTION</text>
+          <text x="546" y="456" textAnchor="middle" fontSize="8" fill="oklch(0.5 0.15 25)">14:00 · Aisle F</text>
+        </g>
+
+        {/* Idle forklifts */}
+        {[
+          { x: 200, y: 620, rot: 12 },
+          { x: 720, y: 660, rot: -8 },
+          { x: 980, y: 400, rot: 90 },
+        ].map((f, i) => (
+          <g key={`fl-${i}`} transform={`translate(${f.x} ${f.y}) rotate(${f.rot})`}>
+            <rect x="-11" y="-7" width="22" height="14" rx="2" fill="oklch(0.78 0.16 75)" stroke="oklch(0.35 0.09 60)" strokeWidth="0.8" />
+            <rect x="-13" y="-9" width="4" height="18" rx="0.5" fill="oklch(0.4 0.06 260)" />
+            <circle cx="-6" cy="8" r="2.5" fill="oklch(0.2 0.02 260)" />
+            <circle cx="6" cy="8" r="2.5" fill="oklch(0.2 0.02 260)" />
+            <text x="0" y="-11" textAnchor="middle" fontSize="7" fontWeight="700" fill="oklch(0.45 0.05 60)">FL-{i + 1}</text>
+          </g>
+        ))}
+
+        {/* Other pickers moving in the warehouse */}
+        {[
+          { x: 366, y: 300, name: "P-02" },
+          { x: 636, y: 200, name: "P-04" },
+          { x: 900, y: 600, name: "P-05" },
+        ].map((p, i) => (
+          <g key={`op-${i}`} transform={`translate(${p.x} ${p.y})`}>
+            <circle r="12" fill="oklch(0.55 0.05 260 / 0.18)" />
+            <circle r="6" fill="oklch(0.55 0.05 260)" stroke="white" strokeWidth="1.5" />
+            <text x="0" y="-11" textAnchor="middle" fontSize="7" fontWeight="700" fill="oklch(0.35 0.05 260)">{p.name}</text>
+          </g>
+        ))}
+
       </svg>
+
 
       {/* Legend chip */}
       <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-full border border-border bg-white/95 px-3 py-1.5 text-[10px] font-medium text-slate-600 shadow-sm backdrop-blur">
