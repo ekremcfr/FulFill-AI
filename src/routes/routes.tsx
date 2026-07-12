@@ -514,7 +514,7 @@ function NavigationMap({
   const showCurrent = routeMode === "current" || routeMode === "both";
 
   return (
-    <div className="relative flex-1 overflow-hidden">
+    <div className="relative h-full w-full overflow-hidden">
       <svg
         viewBox={`0 0 ${WAREHOUSE_WIDTH} ${WAREHOUSE_HEIGHT}`}
         className="absolute inset-0 h-full w-full"
