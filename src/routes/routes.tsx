@@ -754,11 +754,16 @@ function NavigationMap({
 
 
       {/* Legend chip */}
-      <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-full border border-border bg-white/95 px-3 py-1.5 text-[10px] font-medium text-slate-600 shadow-sm backdrop-blur">
+      <div className="pointer-events-none absolute bottom-20 left-4 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-white/95 px-3 py-2 text-[10px] font-medium text-slate-600 shadow-lg backdrop-blur">
+        <span className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Legend</span>
         <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Visited</span>
         <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-amber-500" />Current</span>
         <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full" style={{ background: "oklch(0.62 0.19 240)" }} />Upcoming</span>
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-sm" style={{ background: "oklch(0.78 0.16 75)" }} />Forklift</span>
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full" style={{ background: "oklch(0.55 0.05 260)" }} />Picker</span>
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full" style={{ background: "oklch(0.65 0.22 25 / 0.6)" }} />Congestion</span>
       </div>
+
 
       <style>{`
         .nav-flow { stroke-dashoffset: 0; animation: nav-flow-anim 1.4s linear infinite; }
