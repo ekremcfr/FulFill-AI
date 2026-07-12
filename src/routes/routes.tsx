@@ -292,7 +292,14 @@ function SmartPickingPage() {
     };
   }, [phase]);
 
-  const reset = () => {
+  // Global "Run optimizer" trigger from AppShell top bar.
+  useEffect(() => {
+    const handler = () => { if (phase === "idle") void startOptimization(); };
+    window.addEventListener("fulfillai:run-optimizer", handler);
+    return () => window.removeEventListener("fulfillai:run-optimizer", handler);
+  }, [phase, startOptimization]);
+
+
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     setPhase("idle");
     setProgress(0);
